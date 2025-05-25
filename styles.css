@@ -1,0 +1,364 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: Arial, sans-serif;
+}
+
+body {
+    background-color: #f5f5f5;
+}
+
+@media screen and (max-width: 768px) {
+    .container {
+        padding: 10px;
+        margin: 5px;
+    }
+
+    .filter-section, .form-section, .grafico-filtros, .grafico-buttons {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .filter-section select, .filter-section input[type="number"], .form-section input, .form-section select, .grafico-filtros select, .grafico-filtros input, .categoria-form input, .categoria-form button {
+        width: 100%;
+    }
+
+    .grafico-container {
+        height: 300px;
+    }
+
+    .saldo-section {
+        font-size: 14px;
+    }
+
+    .btn-remover, .btn-remover-transacao, .btn-remover-todas {
+        width: 100%;
+        text-align: center;
+    }
+
+    .grafico-buttons button {
+        width: 100%;
+    }
+
+    .transacoes-container, .categorias-container, .graficos-container {
+        padding: 15px;
+    }
+
+    .transacoes-lista {
+        overflow-x: auto;
+    }
+
+    .modal-content {
+        margin: 20px auto;
+        width: 90%;
+        max-width: 400px;
+    }
+
+    .categoria-form {
+        flex-direction: column;
+    }
+}
+
+.container {
+    max-width: 1200px;
+    margin: 10px;
+    padding: 15px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+@media screen and (max-width: 768px) {
+    .container {
+        margin: 5px;
+        padding: 10px;
+    }
+
+    .tabs {
+        padding: 0 5px;
+    }
+
+    .tab-btn {
+        padding: 8px 15px;
+        font-size: 14px;
+    }
+
+    .filter-section, .form-section {
+        gap: 5px;
+    }
+
+    select, input, button {
+        padding: 6px;
+        font-size: 13px;
+    }
+
+    #transacoes-tabela {
+        font-size: 12px;
+    }
+
+    #transacoes-tabela th, #transacoes-tabela td {
+        padding: 6px;
+    }
+
+    #transacoes-tabela .valor {
+        padding-right: 10px;
+    }
+
+    .saldo-section {
+        font-size: 14px;
+    }
+
+    .grafico-container {
+        height: 300px;
+    }
+
+    .grafico-filtros, .grafico-buttons {
+        gap: 5px;
+    }
+
+    .grafico-filtros select, .grafico-filtros input {
+        width: 100px;
+    }
+
+    .grafico-buttons button {
+        padding: 6px 12px;
+        font-size: 13px;
+    }
+}
+
+h1 {
+    text-align: center;
+    color: #333;
+    margin-bottom: 20px;
+}
+
+/* Estilos para as abas */
+.tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding: 0 10px;
+    border-bottom: 2px solid #ddd;
+}
+
+.transacao-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.transacao-item .descricao {
+    flex: 1;
+    min-width: 0;
+    max-width: 70%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.transacao-item .valor {
+    flex: 0 0 auto;
+    min-width: 100px;
+    text-align: right;
+}
+
+.tab-btn {
+    padding: 10px 20px;
+    border: none;
+    background: none;
+    color: #666;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.3s ease;
+}
+
+.tab-btn:hover {
+    color: #4CAF50;
+}
+
+.tab-btn.active {
+    color: #4CAF50;
+    border-bottom: 2px solid #4CAF50;
+}
+
+.tab-content-container {
+    margin-top: 20px;
+    padding: 20px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.tab-content {
+    display: none;
+    padding: 20px;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.filter-section, .form-section {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+select, input, button {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+select {
+    width: 150px;
+}
+
+input[type="number"] {
+    width: 100px;
+}
+
+input[type="text"] {
+    flex: 1;
+}
+
+button {
+    background-color: #4CAF50;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    padding: 8px 16px;
+    border-radius: 4px;
+    border: none;
+}
+
+button:hover {
+    background-color: #45a049;
+}
+
+/* Estilo para botão de remover */
+.btn-remover {
+    background-color: #dc3545;
+}
+
+.btn-remover:hover {
+    background-color: #c82333;
+}
+
+/* Estilo para o canvas do gráfico */
+.grafico-container {
+    width: 100%;
+    height: 400px;
+    margin: 20px 0;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    position: relative;
+}
+
+#grafico-container {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+canvas {
+    width: 100% !important;
+    height: 100% !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+#transacoes-tabela {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    font-size: 14px;
+}
+
+#transacoes-tabela th {
+    background-color: #f5f5f5;
+    padding: 10px;
+    font-weight: bold;
+    border-bottom: 2px solid #ddd;
+}
+
+#transacoes-tabela td {
+    padding: 8px;
+    border-bottom: 1px solid #ddd;
+}
+
+#transacoes-tabela tr:hover {
+    background-color: #f9f9f9;
+}
+
+#transacoes-tabela .valor {
+    text-align: right;
+    font-weight: bold;
+    padding-right: 15px;
+}
+
+#transacoes-tabela .data {
+    white-space: nowrap;
+}
+
+#transacoes-tabela .acoes {
+    text-align: center;
+    white-space: nowrap;
+}
+
+#transacoes-tabela th {
+    background-color: #f5f5f5;
+}
+
+.saldo-section {
+    text-align: right;
+    font-size: 18px;
+    font-weight: bold;
+    color: #333;
+}
+
+.grafico-filtros, .grafico-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    z-index: 1000;
+}
+
+.modal-content {
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    max-width: 500px;
+    margin: 50px auto;
+    position: relative;
+}
+
+.categoria-form {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+#btn-fechar-modal {
+    width: 100%;
+    margin-top: 20px;
+}

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EVA CFP - Controle Financeiro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>EVA CFP - Controle Financeiro</h1>
+        
+        <!-- Navegação de abas -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="transacoes">Transações</button>
+            <button class="tab-btn" data-tab="graficos">Gráficos</button>
+        </div>
+
+        <!-- Conteúdo das abas -->
+        <div class="tab-content-container">
+            <!-- Aba de Transações -->
+            <div id="transacoes-tab" class="tab-content active">
+                <div class="filter-section">
+                <select id="mes-filtro">
+                    <option value="1">Janeiro</option>
+                    <option value="2">Fevereiro</option>
+                    <option value="3">Março</option>
+                    <option value="4">Abril</option>
+                    <option value="5">Maio</option>
+                    <option value="6">Junho</option>
+                    <option value="7">Julho</option>
+                    <option value="8">Agosto</option>
+                    <option value="9">Setembro</option>
+                    <option value="10">Outubro</option>
+                    <option value="11">Novembro</option>
+                    <option value="12">Dezembro</option>
+                </select>
+                <input type="number" id="ano-filtro" value="2025">
+                <script>
+                    const mesFiltro = document.getElementById('mes-filtro');
+                    const data = new Date();
+                    const mesAtual = data.getMonth() + 1;
+                    mesFiltro.value = mesAtual;
+                </script>
+            </div>
+
+            <!-- Formulário de entrada -->
+            <div class="form-section">
+                <select id="tipo-transacao">
+                    <option value="Receita">Receita</option>
+                    <option value="Despesa">Despesa</option>
+                </select>
+                <input type="number" id="valor" placeholder="Valor">
+                <input type="text" id="descricao" placeholder="Descrição">
+                <select id="categoria">
+                    <option value="">Selecione uma categoria</option>
+                </select>
+                <button id="btn-adicionar">Adicionar</button>
+                <button id="btn-gerenciar-categorias">Gerenciar Categorias</button>
+            </div>
+
+            <!-- Tabela de transações -->
+            <div class="transacoes-lista">
+                <table id="transacoes-tabela">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Tipo</th>
+                            <th>Valor</th>
+                            <th>Descrição</th>
+                            <th>Categoria</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <!-- Área de saldo -->
+            <div class="saldo-section">
+                <p id="saldo-text">Saldo: R$ 0,00</p>
+            </div>
+        </div>
+
+        <!-- Aba de Gráficos -->
+        <div id="graficos-tab" class="tab-content">
+            <div class="grafico-filtros">
+                <select id="mes-grafico">
+                    <option value="1">Janeiro</option>
+                    <option value="2">Fevereiro</option>
+                    <option value="3">Março</option>
+                    <option value="4">Abril</option>
+                    <option value="5">Maio</option>
+                    <option value="6">Junho</option>
+                    <option value="7">Julho</option>
+                    <option value="8">Agosto</option>
+                    <option value="9">Setembro</option>
+                    <option value="10">Outubro</option>
+                    <option value="11">Novembro</option>
+                    <option value="12">Dezembro</option>
+                </select>
+                <input type="number" id="ano-grafico" value="2025">
+            </div>
+
+            <div class="grafico-buttons">
+                <button id="btn-despesas">Despesas por Categoria</button>
+                <button id="btn-evolucao">Evolução Mensal</button>
+            </div>
+
+            <div class="grafico-container">
+                <div id="grafico-container">
+                    <canvas id="grafico" width="800" height="400"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal para gerenciar categorias -->
+        <div id="modal-categorias" class="modal">
+            <div class="modal-content">
+                <h2>Gerenciar Categorias</h2>
+                <div id="categorias-lista"></div>
+                <div class="categoria-form">
+                    <input type="text" id="nova-categoria" placeholder="Nova categoria">
+                    <button id="btn-adicionar-categoria">Adicionar</button>
+                    <button id="btn-remover-categoria">Remover Selecionada</button>
+                </div>
+                <button id="btn-fechar-modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
