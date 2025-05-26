@@ -222,12 +222,54 @@ h1 {
 
 select, input, button {
     padding: 8px;
-    border: 1px solid #ddd;
+    margin: 5px;
     border-radius: 4px;
+    border: 1px solid #ddd;
+    font-size: 14px;
 }
 
-select {
-    width: 150px;
+.btn-exportar, .btn-importar {
+    padding: 8px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.btn-exportar {
+    background-color: #28a745;
+    color: white;
+}
+
+.btn-importar {
+    background-color: #17a2b8;
+    color: white;
+}
+
+.btn-exportar:hover, .btn-importar:hover {
+    opacity: 0.9;
+}
+
+/* Estilo para o input de arquivo de importação */
+.input-arquivo {
+    display: none;
+}
+
+.btn-importar-arquivo {
+    position: relative;
+    overflow: hidden;
+    display: inline-block;
+}
+
+.btn-importar-arquivo input[type="file"] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
 }
 
 input[type="number"] {

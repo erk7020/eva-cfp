@@ -102,6 +102,10 @@ function configurarEventos() {
     document.getElementById('btn-remover-categoria').addEventListener('click', removerCategoria);
     document.getElementById('btn-fechar-modal').addEventListener('click', fecharModalCategorias);
     
+    // Eventos de exportação/importação
+    document.getElementById('btn-exportar-dados').addEventListener('click', exportarDados);
+    document.getElementById('btn-importar-dados').addEventListener('click', importarDados);
+    
     // Eventos de navegação entre abas
     const tabBtns = document.querySelectorAll('.tab-btn');
     tabBtns.forEach(btn => {
@@ -159,6 +163,8 @@ function adicionarTransacao() {
         // Ao adicionar transação, recarregar transações do mês atual e recalcular saldo cumulativo total
         carregarTransacoes();
         calcularSaldoCumulativoTotal();
+        // Atualizar backup
+        gerenciarBackup();
     };
 }
 
@@ -210,7 +216,8 @@ function atualizarTabela(transacoes) {
 }
 
 function removerTransacao(event) {
-    const id = parseInt(event.target.dataset.id);
+    const btn = event.target;
+    const id = btn.dataset.id;
     
     if (!confirm('Tem certeza que deseja remover esta transação?')) {
         return;
@@ -218,12 +225,13 @@ function removerTransacao(event) {
     
     const transaction = db.transaction(['transacoes'], 'readwrite');
     const store = transaction.objectStore('transacoes');
-    store.delete(id);
+    store.delete(parseInt(id));
     
     transaction.oncomplete = () => {
-        // Ao remover transação, recarregar transações do mês atual e recalcular saldo cumulativo total
         carregarTransacoes();
         calcularSaldoCumulativoTotal();
+        // Atualizar backup
+        gerenciarBackup();
     };
 }
 
@@ -267,35 +275,57 @@ function carregarCategorias() {
 }
 
 function adicionarCategoria() {
-    const nome = document.getElementById('nova-categoria').value.trim();
-    if (!nome) return;
+    const nomeCategoria = document.getElementById('categoria-nome').value.trim();
+    
+    if (!nomeCategoria) {
+        alert('Por favor, digite um nome para a categoria');
+        return;
+    }
     
     const transaction = db.transaction(['categorias'], 'readwrite');
     const store = transaction.objectStore('categorias');
     
-    store.add({ categoria: nome });
+    const categoria = {
+        categoria: nomeCategoria
+    };
+    
+    store.add(categoria);
     
     transaction.oncomplete = () => {
-        document.getElementById('nova-categoria').value = '';
-        carregarCategorias();
+        atualizarListaCategorias();
+        // Atualizar backup
+        gerenciarBackup();
     };
 }
 
 function removerCategoria() {
-    const select = document.getElementById('categoria');
-    const categoria = select.value;
-    if (!categoria) return;
+    const select = document.getElementById('categorias-lista');
+    const categoriaSelecionada = select.value;
+    
+    if (!categoriaSelecionada) {
+        alert('Selecione uma categoria para remover');
+        return;
+    }
+    
+    if (!confirm('Tem certeza que deseja remover esta categoria?')) {
+        return;
+    }
     
     const transaction = db.transaction(['categorias'], 'readwrite');
     const store = transaction.objectStore('categorias');
     const index = store.index('categoria');
     
-    index.get(categoria).onsuccess = (event) => {
-        store.delete(event.target.result.id);
-    };
-    
-    transaction.oncomplete = () => {
-        carregarCategorias();
+    index.get(categoriaSelecionada).onsuccess = (event) => {
+        const categoria = event.target.result;
+        if (categoria) {
+            store.delete(categoria.id);
+            
+            transaction.oncomplete = () => {
+                atualizarListaCategorias();
+                // Atualizar backup
+                gerenciarBackup();
+            };
+        }
     };
 }
 
@@ -572,6 +602,134 @@ function plotarEvolucaoMensal(ano) {
     request.onerror = (event) => {
         console.error('Erro ao buscar transações:', event.target.error);
         alert('Erro ao carregar dados do gráfico');
+    };
+}
+
+// Funções de exportação/importação
+function exportarDados() {
+    // Exportar o backup salvo no localStorage
+    const dados = JSON.parse(localStorage.getItem('cfp_backup') || '{}');
+    
+    if (!dados.transacoes || !dados.categorias) {
+        alert('Nenhum backup encontrado. Por favor, faça uma alteração no sistema para gerar um backup.');
+        return;
+    }
+    
+    // Gerar nome do arquivo com data atual
+    const hoje = new Date();
+    const ano = hoje.getFullYear();
+    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+    const dia = String(hoje.getDate()).padStart(2, '0');
+    const nomeArquivo = `cfp-dados-${ano}-${mes}-${dia}.json`;
+    
+    // Criar blob e gerar link para download
+    const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nomeArquivo;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+}
+
+function importarDados() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    
+    input.onchange = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        try {
+            const content = await file.text();
+            const dados = JSON.parse(content);
+            
+            if (!dados.transacoes || !dados.categorias) {
+                throw new Error('O arquivo não está no formato correto');
+            }
+            
+            // Confirmar importação
+            if (!confirm('Tem certeza que deseja importar os dados? Isso irá sobrescrever os dados atuais.')) {
+                return;
+            }
+            
+            // Limpar dados atuais
+            const transaction = db.transaction(['transacoes', 'categorias'], 'readwrite');
+            const transacoesStore = transaction.objectStore('transacoes');
+            const categoriasStore = transaction.objectStore('categorias');
+            
+            // Limpar dados atuais
+            await transacoesStore.clear();
+            await categoriasStore.clear();
+            
+            // Adicionar novos dados
+            dados.transacoes.forEach(transacao => {
+                transacoesStore.add(transacao);
+            });
+            
+            dados.categorias.forEach(categoria => {
+                categoriasStore.add(categoria);
+            });
+            
+            // Recarregar dados
+            carregarTransacoes();
+            carregarCategorias();
+            calcularSaldoCumulativoTotal();
+            
+            // Atualizar backup
+            gerenciarBackup();
+            
+            alert('Dados importados com sucesso!');
+        } catch (error) {
+            alert('Erro ao importar dados: ' + error.message);
+        }
+    };
+    
+    input.click();
+}
+
+// Função para gerenciar backup automático
+function gerenciarBackup() {
+    // Nome do arquivo de backup fixo
+    const nomeArquivo = 'cfp-backup.json';
+    
+    // Criar uma nova transação para ler os dados
+    const transaction = db.transaction(['transacoes', 'categorias'], 'readonly');
+    const transacoesStore = transaction.objectStore('transacoes');
+    const categoriasStore = transaction.objectStore('categorias');
+    
+    const dados = {
+        transacoes: [],
+        categorias: []
+    };
+    
+    transacoesStore.getAll().onsuccess = (event) => {
+        dados.transacoes = event.target.result;
+        categoriasStore.getAll().onsuccess = (event) => {
+            dados.categorias = event.target.result;
+            
+            // Criar blob e salvar no localStorage
+            const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            
+            // Criar um link temporário para salvar o arquivo
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = nomeArquivo;
+            
+            // Salvar no localStorage para persistência
+            localStorage.setItem('cfp_backup', JSON.stringify(dados));
+            
+            // Atualizar o arquivo de backup
+            a.click();
+            
+            // Limpar recursos
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        };
     };
 }
 
