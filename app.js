@@ -690,24 +690,7 @@ function exportarDados() {
         const backups = event.target.result;
         if (backups.length > 0) {
             const dados = backups[0].dados; // Pega os dados do último backup
-            
-            // Gerar nome do arquivo com data atual
-            const hoje = new Date();
-            const ano = hoje.getFullYear();
-            const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-            const dia = String(hoje.getDate()).padStart(2, '0');
-            const nomeArquivo = `cfp-dados-${ano}-${mes}-${dia}.json`;
-            
-            // Criar blob e gerar link para download
-            const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = nomeArquivo;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
+            exportarDadosJSON(dados);
         } else {
             // Se não houver backup no IndexedDB, tentar usar localStorage
             const dados = JSON.parse(localStorage.getItem('cfp_backup') || '{}');
@@ -716,26 +699,57 @@ function exportarDados() {
                 alert('Nenhum backup encontrado. Por favor, faça uma alteração no sistema para gerar um backup.');
                 return;
             }
-            
-            // Gerar nome do arquivo com data atual
-            const hoje = new Date();
-            const ano = hoje.getFullYear();
-            const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-            const dia = String(hoje.getDate()).padStart(2, '0');
-            const nomeArquivo = `cfp-dados-${ano}-${mes}-${dia}.json`;
-            
-            // Criar blob e gerar link para download
-            const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
-            const url = window.URL.createObjectURL(blob);
+            exportarDadosJSON(dados);
+        }
+    };
+    
+    request.onerror = (event) => {
+        console.error('Erro ao buscar backup:', event.target.error);
+        alert('Erro ao exportar dados. Por favor, tente novamente.');
+    };
+}
+
+function exportarDadosJSON(dados) {
+    // Gerar nome do arquivo com data atual
+    const hoje = new Date();
+    const ano = hoje.getFullYear();
+    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+    const dia = String(hoje.getDate()).padStart(2, '0');
+    const nomeArquivo = `cfp-dados-${ano}-${mes}-${dia}.json`;
+    
+    try {
+        // Criar blob e gerar link para download
+        const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
+        const url = window.URL.createObjectURL(blob);
+        
+        // Verificar se o navegador suporta download
+        if (typeof document.createElement('a').download !== 'undefined') {
+            // Método para navegadores que suportam download
             const a = document.createElement('a');
             a.href = url;
             a.download = nomeArquivo;
             document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            
+            // Adicionar um pequeno delay para garantir que o elemento esteja pronto
+            setTimeout(() => {
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }, 100);
+        } else {
+            // Método alternativo para navegadores que não suportam download
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_blank';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
             window.URL.revokeObjectURL(url);
         }
-    };
+    } catch (error) {
+        console.error('Erro ao exportar dados:', error);
+        alert('Erro ao exportar dados. Por favor, tente novamente.');
+    }
 }
 
 function importarDados() {
