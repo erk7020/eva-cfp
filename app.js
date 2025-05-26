@@ -1,7 +1,13 @@
+// Configuração do GitHub API
+const GITHUB_API_URL = 'https://api.github.com';
+const GITHUB_REPO = 'erk7020/eva-cfp';
+const GITHUB_TOKEN = localStorage.getItem('github_token'); // Token será salvo após login
+
 // Inicialização do IndexedDB
 const DB_NAME = 'EVA_CFP';
 const DB_VERSION = 2;
 let db;
+let usuarioLogado = null;
 
 // Abre a conexão com o banco de dados
 const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -15,6 +21,8 @@ request.onsuccess = (event) => {
     inicializarAplicacao();
     // Carregar backup inicial se existir
     carregarBackup();
+    // Verificar se usuário está logado
+    verificarLogin();
 };
 
 request.onupgradeneeded = (event) => {
@@ -33,10 +41,19 @@ request.onupgradeneeded = (event) => {
     // Criação do objeto store para backup
     const backupStore = db.createObjectStore('backup', { keyPath: 'id', autoIncrement: true });
     backupStore.createIndex('data', 'data', { unique: false });
+    
+    // Criação do objeto store para usuários
+    const usuariosStore = db.createObjectStore('usuarios', { keyPath: 'id', autoIncrement: true });
+    usuariosStore.createIndex('email', 'email', { unique: true });
+    usuariosStore.createIndex('githubId', 'githubId', { unique: true });
 };
 
 // Função para carregar backup inicial
 function carregarBackup() {
+    // Primeiro tentar carregar do GitHub
+    carregarDadosGitHub();
+    
+    // Se falhar, usar backup local
     const transaction = db.transaction(['backup'], 'readonly');
     const backupStore = transaction.objectStore('backup');
     
@@ -70,6 +87,49 @@ function carregarBackup() {
             calcularSaldoCumulativoTotal();
         }
     };
+}
+
+// Função para verificar login
+function verificarLogin() {
+    if (GITHUB_TOKEN) {
+        // Usuário já está logado
+        usuarioLogado = JSON.parse(localStorage.getItem('usuario_logado'));
+        if (usuarioLogado) {
+            // Carregar dados do GitHub
+            carregarDadosGitHub();
+        }
+    } else {
+        // Mostrar modal de login
+        abrirModalLogin();
+    }
+}
+
+// Função para abrir modal de login
+function abrirModalLogin() {
+    // Criar modal de login
+    const modal = document.createElement('div');
+    modal.className = 'modal-login';
+    modal.innerHTML = `
+        <div class="modal-login-content">
+            <h2>Login com GitHub</h2>
+            <p>Por favor, faça login com sua conta do GitHub para acessar seus dados.</p>
+            <button id="btn-login-github">Login com GitHub</button>
+            <button id="btn-cancelar-login">Cancelar</button>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Configurar eventos do modal
+    document.getElementById('btn-login-github').addEventListener('click', () => {
+        // Redirecionar para login do GitHub
+        const authUrl = `https://github.com/login/oauth/authorize?client_id=SEU_CLIENT_ID&redirect_uri=SEU_REDIRECT_URI&scope=read:user`;
+        window.location.href = authUrl;
+    });
+    
+    document.getElementById('btn-cancelar-login').addEventListener('click', () => {
+        modal.remove();
+    });
 }
 
 // Função para inicializar a aplicação
@@ -818,8 +878,100 @@ function gerenciarBackup() {
             };
             
             backupStore.add(backup);
+            
+            // Se usuário está logado, salvar no GitHub
+            if (usuarioLogado) {
+                salvarNoGitHub(dados);
+            }
         };
     };
+}
+
+// Função para salvar dados no GitHub
+async function salvarNoGitHub(dados) {
+    try {
+        const headers = {
+            'Authorization': `token ${GITHUB_TOKEN}`,
+            'Content-Type': 'application/json'
+        };
+        
+        // Converter dados para string
+        const dadosString = JSON.stringify(dados);
+        const blob = new Blob([dadosString], { type: 'application/json' });
+        const base64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+        });
+        
+        // Criar ou atualizar arquivo no GitHub
+        const response = await fetch(`${GITHUB_API_URL}/repos/${GITHUB_REPO}/contents/dados/${usuarioLogado.githubId}.json`, {
+            method: 'PUT',
+            headers: headers,
+            body: JSON.stringify({
+                message: `Atualizando dados do usuário ${usuarioLogado.githubId}`,
+                content: base64.split(',')[1],
+                branch: 'main'
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Erro ao salvar dados no GitHub');
+        }
+        
+        console.log('Dados salvos com sucesso no GitHub');
+    } catch (error) {
+        console.error('Erro ao salvar dados no GitHub:', error);
+    }
+}
+
+// Função para carregar dados do GitHub
+async function carregarDadosGitHub() {
+    if (!usuarioLogado) return;
+    
+    try {
+        const headers = {
+            'Authorization': `token ${GITHUB_TOKEN}`,
+            'Content-Type': 'application/json'
+        };
+        
+        const response = await fetch(`${GITHUB_API_URL}/repos/${GITHUB_REPO}/contents/dados/${usuarioLogado.githubId}.json`, {
+            headers: headers
+        });
+        
+        if (!response.ok) {
+            throw new Error('Erro ao carregar dados do GitHub');
+        }
+        
+        const data = await response.json();
+        const base64Content = data.content;
+        const dados = JSON.parse(atob(base64Content));
+        
+        // Limpar dados atuais
+        const transaction = db.transaction(['transacoes', 'categorias'], 'readwrite');
+        const transacoesStore = transaction.objectStore('transacoes');
+        const categoriasStore = transaction.objectStore('categorias');
+        
+        transacoesStore.clear();
+        categoriasStore.clear();
+        
+        // Adicionar novos dados
+        dados.transacoes.forEach(transacao => {
+            transacoesStore.add(transacao);
+        });
+        
+        dados.categorias.forEach(categoria => {
+            categoriasStore.add(categoria);
+        });
+        
+        // Atualizar backup local
+        gerenciarBackup();
+        
+        alert('Dados carregados com sucesso do GitHub!');
+    } catch (error) {
+        console.error('Erro ao carregar dados do GitHub:', error);
+        alert('Erro ao carregar dados do GitHub. Usando backup local.');
+    }
 }
 
 // Função para calcular e exibir o saldo cumulativo TOTAL do ano
