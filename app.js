@@ -491,14 +491,19 @@ function plotarEvolucaoMensal(ano) {
         // Agrupar por mês e tipo
         const mesReceitas = Array(12).fill(0);
         const mesDespesas = Array(12).fill(0);
+        const saldoAcumulado = Array(12).fill(0);
+        let acumulado = 0;
         
         transacoes.forEach(transacao => {
             const mes = new Date(transacao.data).getMonth();
             if (transacao.tipo === 'Receita') {
                 mesReceitas[mes] += transacao.valor;
+                acumulado += transacao.valor;
             } else {
                 mesDespesas[mes] += transacao.valor;
+                acumulado -= transacao.valor;
             }
+            saldoAcumulado[mes] = acumulado;
         });
         
         // Criar gráfico
@@ -529,10 +534,6 @@ function plotarEvolucaoMensal(ano) {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    title: {
-                        display: true,
-                        text: `Evolução Mensal - ${ano}`
-                    },
                     legend: {
                         position: 'bottom'
                     }
@@ -549,12 +550,42 @@ function plotarEvolucaoMensal(ano) {
                 }
             }
         });
+
+        // Criar tabela de saldo acumulativo
+        const tabelaSaldo = document.getElementById('tabela-saldo');
+        if (!tabelaSaldo) {
+            const container = document.querySelector('.grafico-container');
+            const tabela = document.createElement('div');
+            tabela.id = 'tabela-saldo';
+            tabela.className = 'saldo-acumulado';
+            tabela.innerHTML = `
+                <h3>Saldo Acumulado ao Longo do Ano</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mês</th>
+                            <th>Saldo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${saldoAcumulado.map((saldo, index) => `
+                            <tr>
+                                <td>${meses[index]}</td>
+                                <td>${saldo.toFixed(2)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            container.appendChild(tabela);
+        }
     };
     
     request.onerror = (event) => {
         console.error('Erro ao buscar transações:', event.target.error);
         alert('Erro ao carregar dados do gráfico');
     };
+}
 }
 
 // Array de meses para formatação
