@@ -420,6 +420,9 @@ function atualizarListaCategorias() {
     const lista = document.getElementById('categorias-lista');
     lista.innerHTML = '';
     
+    // Pegar a categoria selecionada no select de transações
+    const categoriaSelecionada = document.getElementById('categoria').value;
+    
     const transaction = db.transaction(['categorias'], 'readonly');
     const store = transaction.objectStore('categorias');
     
@@ -429,6 +432,21 @@ function atualizarListaCategorias() {
             const div = document.createElement('div');
             div.textContent = categoria.categoria;
             div.classList.add('categoria-item');
+            
+            // Adicionar classe para destacar a categoria selecionada
+            if (categoria.categoria === categoriaSelecionada) {
+                div.classList.add('categoria-selecionada');
+            }
+            
+            // Adicionar evento de clique para selecionar a categoria
+            div.addEventListener('click', () => {
+                lista.querySelectorAll('.categoria-selecionada').forEach(item => {
+                    item.classList.remove('categoria-selecionada');
+                });
+                div.classList.add('categoria-selecionada');
+                lista.value = categoria.categoria;
+            });
+            
             lista.appendChild(div);
         });
     };
