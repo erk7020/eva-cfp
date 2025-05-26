@@ -580,7 +580,7 @@ function plotarEvolucaoMensal(ano) {
                         ${saldoAcumulado.map((saldo, index) => `
                             <tr>
                                 <td>${meses[index]}</td>
-                                <td>${saldo.toFixed(2)}</td>
+                                <td>R$ ${saldo.toFixed(2)}</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -594,7 +594,6 @@ function plotarEvolucaoMensal(ano) {
         console.error('Erro ao buscar transações:', event.target.error);
         alert('Erro ao carregar dados do gráfico');
     };
-}
 }
 
 // Array de meses para formatação
