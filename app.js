@@ -1,3 +1,8 @@
+// Configuração do GitHub API
+const GITHUB_API_URL = 'https://api.github.com';
+const GITHUB_REPO = 'erk7020/eva-cfp';
+const GITHUB_TOKEN = localStorage.getItem('github_token'); // Token será salvo após login
+
 // Inicialização do IndexedDB
 const DB_NAME = 'EVA_CFP';
 const DB_VERSION = 1;
@@ -670,31 +675,61 @@ function plotarEvolucaoMensal(ano) {
 
 // Funções de exportação/importação
 function exportarDados() {
-    // Exportar o backup salvo no localStorage
-    const dados = JSON.parse(localStorage.getItem('cfp_backup') || '{}');
+    // Primeiro tentar obter dados do IndexedDB
+    const transaction = db.transaction(['backup'], 'readonly');
+    const backupStore = transaction.objectStore('backup');
     
-    if (!dados.transacoes || !dados.categorias) {
-        alert('Nenhum backup encontrado. Por favor, faça uma alteração no sistema para gerar um backup.');
-        return;
-    }
-    
-    // Gerar nome do arquivo com data atual
-    const hoje = new Date();
-    const ano = hoje.getFullYear();
-    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-    const dia = String(hoje.getDate()).padStart(2, '0');
-    const nomeArquivo = `cfp-dados-${ano}-${mes}-${dia}.json`;
-    
-    // Criar blob e gerar link para download
-    const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = nomeArquivo;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
+    const request = backupStore.getAll();
+    request.onsuccess = (event) => {
+        const backups = event.target.result;
+        if (backups.length > 0) {
+            const dados = backups[0].dados; // Pega os dados do último backup
+            
+            // Gerar nome do arquivo com data atual
+            const hoje = new Date();
+            const ano = hoje.getFullYear();
+            const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+            const dia = String(hoje.getDate()).padStart(2, '0');
+            const nomeArquivo = `cfp-dados-${ano}-${mes}-${dia}.json`;
+            
+            // Criar blob e gerar link para download
+            const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = nomeArquivo;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        } else {
+            // Se não houver backup no IndexedDB, tentar usar localStorage
+            const dados = JSON.parse(localStorage.getItem('cfp_backup') || '{}');
+            
+            if (!dados.transacoes || !dados.categorias) {
+                alert('Nenhum backup encontrado. Por favor, faça uma alteração no sistema para gerar um backup.');
+                return;
+            }
+            
+            // Gerar nome do arquivo com data atual
+            const hoje = new Date();
+            const ano = hoje.getFullYear();
+            const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+            const dia = String(hoje.getDate()).padStart(2, '0');
+            const nomeArquivo = `cfp-dados-${ano}-${mes}-${dia}.json`;
+            
+            // Criar blob e gerar link para download
+            const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = nomeArquivo;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+    };
 }
 
 function importarDados() {
@@ -771,10 +806,117 @@ function gerenciarBackup() {
         categoriasStore.getAll().onsuccess = (event) => {
             dados.categorias = event.target.result;
             
-            // Salvar no localStorage para persistência
+            // Salvar no localStorage para cache temporário
             localStorage.setItem('cfp_backup', JSON.stringify(dados));
+            
+            // Salvar no IndexedDB para backup persistente
+            const backupTransaction = db.transaction(['backup'], 'readwrite');
+            const backupStore = backupTransaction.objectStore('backup');
+            
+            // Remover backup antigo
+            backupStore.clear();
+            
+            // Adicionar novo backup
+            const backup = {
+                dados: dados,
+                data: new Date().toISOString()
+            };
+            
+            backupStore.add(backup);
+            
+            // Se usuário está logado, salvar no GitHub
+            if (usuarioLogado) {
+                salvarNoGitHub(dados);
+            }
         };
     };
+}
+
+// Função para salvar dados no GitHub
+async function salvarNoGitHub(dados) {
+    try {
+        const headers = {
+            'Authorization': `token ${GITHUB_TOKEN}`,
+            'Content-Type': 'application/json'
+        };
+        
+        // Converter dados para string
+        const dadosString = JSON.stringify(dados);
+        const blob = new Blob([dadosString], { type: 'application/json' });
+        const base64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+        });
+        
+        // Criar ou atualizar arquivo no GitHub
+        const response = await fetch(`${GITHUB_API_URL}/repos/${GITHUB_REPO}/contents/dados/${usuarioLogado.githubId}.json`, {
+            method: 'PUT',
+            headers: headers,
+            body: JSON.stringify({
+                message: `Atualizando dados do usuário ${usuarioLogado.githubId}`,
+                content: base64.split(',')[1],
+                branch: 'main'
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Erro ao salvar dados no GitHub');
+        }
+        
+        console.log('Dados salvos com sucesso no GitHub');
+    } catch (error) {
+        console.error('Erro ao salvar dados no GitHub:', error);
+    }
+}
+
+// Função para carregar dados do GitHub
+async function carregarDadosGitHub() {
+    if (!usuarioLogado) return;
+    
+    try {
+        const headers = {
+            'Authorization': `token ${GITHUB_TOKEN}`,
+            'Content-Type': 'application/json'
+        };
+        
+        const response = await fetch(`${GITHUB_API_URL}/repos/${GITHUB_REPO}/contents/dados/${usuarioLogado.githubId}.json`, {
+            headers: headers
+        });
+        
+        if (!response.ok) {
+            throw new Error('Erro ao carregar dados do GitHub');
+        }
+        
+        const data = await response.json();
+        const base64Content = data.content;
+        const dados = JSON.parse(atob(base64Content));
+        
+        // Limpar dados atuais
+        const transaction = db.transaction(['transacoes', 'categorias'], 'readwrite');
+        const transacoesStore = transaction.objectStore('transacoes');
+        const categoriasStore = transaction.objectStore('categorias');
+        
+        transacoesStore.clear();
+        categoriasStore.clear();
+        
+        // Adicionar novos dados
+        dados.transacoes.forEach(transacao => {
+            transacoesStore.add(transacao);
+        });
+        
+        dados.categorias.forEach(categoria => {
+            categoriasStore.add(categoria);
+        });
+        
+        // Atualizar backup local
+        gerenciarBackup();
+        
+        alert('Dados carregados com sucesso do GitHub!');
+    } catch (error) {
+        console.error('Erro ao carregar dados do GitHub:', error);
+        alert('Erro ao carregar dados do GitHub. Usando backup local.');
+    }
 }
 
 // Função para calcular e exibir o saldo cumulativo TOTAL do ano
