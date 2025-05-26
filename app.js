@@ -713,9 +713,6 @@ function importarDados() {
 
 // Função para gerenciar backup automático
 function gerenciarBackup() {
-    // Nome do arquivo de backup fixo
-    const nomeArquivo = 'cfp-backup.json';
-    
     // Criar uma nova transação para ler os dados
     const transaction = db.transaction(['transacoes', 'categorias'], 'readonly');
     const transacoesStore = transaction.objectStore('transacoes');
@@ -731,24 +728,8 @@ function gerenciarBackup() {
         categoriasStore.getAll().onsuccess = (event) => {
             dados.categorias = event.target.result;
             
-            // Criar blob e salvar no localStorage
-            const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
-            const url = window.URL.createObjectURL(blob);
-            
-            // Criar um link temporário para salvar o arquivo
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = nomeArquivo;
-            
             // Salvar no localStorage para persistência
             localStorage.setItem('cfp_backup', JSON.stringify(dados));
-            
-            // Atualizar o arquivo de backup
-            a.click();
-            
-            // Limpar recursos
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
         };
     };
 }
