@@ -5,7 +5,7 @@ const GITHUB_TOKEN = localStorage.getItem('github_token'); // Token será salvo 
 
 // Inicialização do IndexedDB
 const DB_NAME = 'EVA_CFP';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let db;
 
 // Abre a conexão com o banco de dados
@@ -25,19 +25,25 @@ request.onsuccess = (event) => {
 request.onupgradeneeded = (event) => {
     db = event.target.result;
     
-    // Criação do objeto store para transações
-    const transacoesStore = db.createObjectStore('transacoes', { keyPath: 'id', autoIncrement: true });
-    transacoesStore.createIndex('data', 'data', { unique: false });
-    transacoesStore.createIndex('tipo', 'tipo', { unique: false });
-    transacoesStore.createIndex('categoria', 'categoria', { unique: false });
+    // Se já existir o store de transações, apenas atualizar
+    if (!db.objectStoreNames.contains('transacoes')) {
+        const transacoesStore = db.createObjectStore('transacoes', { keyPath: 'id', autoIncrement: true });
+        transacoesStore.createIndex('data', 'data', { unique: false });
+        transacoesStore.createIndex('tipo', 'tipo', { unique: false });
+        transacoesStore.createIndex('categoria', 'categoria', { unique: false });
+    }
     
-    // Criação do objeto store para categorias
-    const categoriasStore = db.createObjectStore('categorias', { keyPath: 'id', autoIncrement: true });
-    categoriasStore.createIndex('categoria', 'categoria', { unique: true });
+    // Se já existir o store de categorias, apenas atualizar
+    if (!db.objectStoreNames.contains('categorias')) {
+        const categoriasStore = db.createObjectStore('categorias', { keyPath: 'id', autoIncrement: true });
+        categoriasStore.createIndex('categoria', 'categoria', { unique: true });
+    }
     
-    // Criação do objeto store para backup
-    const backupStore = db.createObjectStore('backup', { keyPath: 'id', autoIncrement: true });
-    backupStore.createIndex('data', 'data', { unique: false });
+    // Se já existir o store de backup, apenas atualizar
+    if (!db.objectStoreNames.contains('backup')) {
+        const backupStore = db.createObjectStore('backup', { keyPath: 'id', autoIncrement: true });
+        backupStore.createIndex('data', 'data', { unique: false });
+    }
 };
 
 // Função para carregar backup inicial
