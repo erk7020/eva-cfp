@@ -152,16 +152,11 @@ function adicionarTransacao() {
     
     const transaction = db.transaction(['transacoes'], 'readwrite');
     const store = transaction.objectStore('transacoes');
+    store.add(transacao);
     
-    const request = store.add(transacao);
-    request.onsuccess = () => {
+    transaction.oncomplete = () => {
         limparCampos();
         carregarTransacoes();
-    };
-    
-    request.onerror = (event) => {
-        console.error('Erro ao adicionar transação:', event.target.error);
-        alert('Erro ao adicionar transação. Por favor, tente novamente.');
     };
 }
 
@@ -213,23 +208,19 @@ function atualizarTabela(transacoes) {
 }
 
 function removerTransacao(event) {
-    const btn = event.target;
-    const id = parseInt(btn.dataset.id);
-
-    if (confirm('Tem certeza que deseja remover esta transação?')) {
-        const transaction = db.transaction(['transacoes'], 'readwrite');
-        const store = transaction.objectStore('transacoes');
-        
-        const request = store.delete(id);
-        request.onsuccess = () => {
-            carregarTransacoes();
-        };
-        
-        request.onerror = (event) => {
-            console.error('Erro ao remover transação:', event.target.error);
-            alert('Erro ao remover transação. Por favor, tente novamente.');
-        };
+    const id = parseInt(event.target.dataset.id);
+    
+    if (!confirm('Tem certeza que deseja remover esta transação?')) {
+        return;
     }
+    
+    const transaction = db.transaction(['transacoes'], 'readwrite');
+    const store = transaction.objectStore('transacoes');
+    store.delete(id);
+    
+    transaction.oncomplete = () => {
+        carregarTransacoes();
+    };
 }
 
 function calcularSaldo(transacoes) {
@@ -349,11 +340,11 @@ function plotarGrafico(tipo) {
         if (existingChart) {
             existingChart.destroy();
         }
-        
-        // Limpar canvas
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
+    
+    // Limpar canvas
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     // Salvar o último tipo de gráfico
     localStorage.setItem('ultimoGrafico', tipo);
@@ -500,19 +491,14 @@ function plotarEvolucaoMensal(ano) {
         // Agrupar por mês e tipo
         const mesReceitas = Array(12).fill(0);
         const mesDespesas = Array(12).fill(0);
-        const saldoAcumulado = Array(12).fill(0);
-        let acumulado = 0;
         
         transacoes.forEach(transacao => {
             const mes = new Date(transacao.data).getMonth();
             if (transacao.tipo === 'Receita') {
                 mesReceitas[mes] += transacao.valor;
-                acumulado += transacao.valor;
             } else {
                 mesDespesas[mes] += transacao.valor;
-                acumulado -= transacao.valor;
             }
-            saldoAcumulado[mes] = acumulado;
         });
         
         // Criar gráfico
@@ -543,6 +529,10 @@ function plotarEvolucaoMensal(ano) {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
+                    title: {
+                        display: true,
+                        text: `Evolução Mensal - ${ano}`
+                    },
                     legend: {
                         position: 'bottom'
                     }
@@ -559,35 +549,6 @@ function plotarEvolucaoMensal(ano) {
                 }
             }
         });
-
-        // Criar tabela de saldo acumulativo
-        const tabelaSaldo = document.getElementById('tabela-saldo');
-        if (!tabelaSaldo) {
-            const container = document.getElementById('grafico-container');
-            const tabela = document.createElement('div');
-            tabela.id = 'tabela-saldo';
-            tabela.className = 'saldo-acumulado';
-            tabela.innerHTML = `
-                <h3>Saldo Acumulado ao Longo do Ano</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Mês</th>
-                            <th>Saldo</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${saldoAcumulado.map((saldo, index) => `
-                            <tr>
-                                <td>${meses[index]}</td>
-                                <td>R$ ${saldo.toFixed(2)}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `;
-            container.appendChild(tabela);
-        }
     };
     
     request.onerror = (event) => {
