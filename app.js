@@ -355,14 +355,30 @@ function adicionarCategoria() {
 
 function removerCategoria() {
     const select = document.getElementById('categorias-lista');
-    const categoriaSelecionada = select.value;
+    const categoriaSelecionada = select.value.trim();
     
     if (!categoriaSelecionada) {
         alert('Selecione uma categoria para remover');
         return;
     }
     
-    if (!confirm('Tem certeza que deseja remover esta categoria?')) {
+    // Verificar se a categoria está sendo usada em alguma transação
+    const transacaoTransaction = db.transaction(['transacoes'], 'readonly');
+    const transacoesStore = transacaoTransaction.objectStore('transacoes');
+    const transacoesIndex = transacoesStore.index('categoria');
+    
+    const request = transacoesIndex.getAll(categoriaSelecionada);
+    request.onsuccess = (event) => {
+        const transacoes = event.target.result;
+        
+        if (transacoes.length > 0) {
+            alert('Esta categoria não pode ser removida porque está sendo usada em transações.\n\nTransações usando esta categoria:\n' + 
+                transacoes.map(t => `${t.descricao} (${t.tipo})`).join('\n'));
+            return;
+        }
+    };
+    
+    if (!confirm(`Tem certeza que deseja remover a categoria "${categoriaSelecionada}"?`)) {
         return;
     }
     
@@ -377,8 +393,14 @@ function removerCategoria() {
             
             transaction.oncomplete = () => {
                 atualizarListaCategorias();
+                atualizarSelectCategorias(); // Atualizar o select também
                 // Atualizar backup
                 gerenciarBackup();
+            };
+            
+            transaction.onerror = (event) => {
+                console.error('Erro ao remover categoria:', event.target.error);
+                alert('Erro ao remover categoria. Por favor, tente novamente.');
             };
         }
     };
