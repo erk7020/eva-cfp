@@ -1,6 +1,6 @@
 // Inicialização do IndexedDB
 const DB_NAME = 'EVA_CFP';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let db;
 
 // Abre a conexão com o banco de dados
@@ -13,6 +13,8 @@ request.onerror = (event) => {
 request.onsuccess = (event) => {
     db = event.target.result;
     inicializarAplicacao();
+    // Carregar backup inicial se existir
+    carregarBackup();
 };
 
 request.onupgradeneeded = (event) => {
@@ -27,7 +29,48 @@ request.onupgradeneeded = (event) => {
     // Criação do objeto store para categorias
     const categoriasStore = db.createObjectStore('categorias', { keyPath: 'id', autoIncrement: true });
     categoriasStore.createIndex('categoria', 'categoria', { unique: true });
+    
+    // Criação do objeto store para backup
+    const backupStore = db.createObjectStore('backup', { keyPath: 'id', autoIncrement: true });
+    backupStore.createIndex('data', 'data', { unique: false });
 };
+
+// Função para carregar backup inicial
+function carregarBackup() {
+    const transaction = db.transaction(['backup'], 'readonly');
+    const backupStore = transaction.objectStore('backup');
+    
+    const request = backupStore.getAll();
+    request.onsuccess = (event) => {
+        const backups = event.target.result;
+        if (backups.length > 0) {
+            const dados = backups[0].dados;
+            
+            // Limpar dados atuais
+            const transaction = db.transaction(['transacoes', 'categorias'], 'readwrite');
+            const transacoesStore = transaction.objectStore('transacoes');
+            const categoriasStore = transaction.objectStore('categorias');
+            
+            // Limpar dados atuais
+            transacoesStore.clear();
+            categoriasStore.clear();
+            
+            // Adicionar dados do backup
+            dados.transacoes.forEach(transacao => {
+                transacoesStore.add(transacao);
+            });
+            
+            dados.categorias.forEach(categoria => {
+                categoriasStore.add(categoria);
+            });
+            
+            // Recarregar dados
+            carregarTransacoes();
+            carregarCategorias();
+            calcularSaldoCumulativoTotal();
+        }
+    };
+}
 
 // Função para inicializar a aplicação
 function inicializarAplicacao() {
@@ -627,31 +670,61 @@ function plotarEvolucaoMensal(ano) {
 
 // Funções de exportação/importação
 function exportarDados() {
-    // Exportar o backup salvo no localStorage
-    const dados = JSON.parse(localStorage.getItem('cfp_backup') || '{}');
+    // Primeiro tentar obter dados do IndexedDB
+    const transaction = db.transaction(['backup'], 'readonly');
+    const backupStore = transaction.objectStore('backup');
     
-    if (!dados.transacoes || !dados.categorias) {
-        alert('Nenhum backup encontrado. Por favor, faça uma alteração no sistema para gerar um backup.');
-        return;
-    }
-    
-    // Gerar nome do arquivo com data atual
-    const hoje = new Date();
-    const ano = hoje.getFullYear();
-    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-    const dia = String(hoje.getDate()).padStart(2, '0');
-    const nomeArquivo = `cfp-dados-${ano}-${mes}-${dia}.json`;
-    
-    // Criar blob e gerar link para download
-    const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = nomeArquivo;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
+    const request = backupStore.getAll();
+    request.onsuccess = (event) => {
+        const backups = event.target.result;
+        if (backups.length > 0) {
+            const dados = backups[0].dados; // Pega os dados do último backup
+            
+            // Gerar nome do arquivo com data atual
+            const hoje = new Date();
+            const ano = hoje.getFullYear();
+            const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+            const dia = String(hoje.getDate()).padStart(2, '0');
+            const nomeArquivo = `cfp-dados-${ano}-${mes}-${dia}.json`;
+            
+            // Criar blob e gerar link para download
+            const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = nomeArquivo;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        } else {
+            // Se não houver backup no IndexedDB, tentar usar localStorage
+            const dados = JSON.parse(localStorage.getItem('cfp_backup') || '{}');
+            
+            if (!dados.transacoes || !dados.categorias) {
+                alert('Nenhum backup encontrado. Por favor, faça uma alteração no sistema para gerar um backup.');
+                return;
+            }
+            
+            // Gerar nome do arquivo com data atual
+            const hoje = new Date();
+            const ano = hoje.getFullYear();
+            const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+            const dia = String(hoje.getDate()).padStart(2, '0');
+            const nomeArquivo = `cfp-dados-${ano}-${mes}-${dia}.json`;
+            
+            // Criar blob e gerar link para download
+            const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = nomeArquivo;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+    };
 }
 
 function importarDados() {
@@ -728,8 +801,23 @@ function gerenciarBackup() {
         categoriasStore.getAll().onsuccess = (event) => {
             dados.categorias = event.target.result;
             
-            // Salvar no localStorage para persistência
+            // Salvar no localStorage para cache temporário
             localStorage.setItem('cfp_backup', JSON.stringify(dados));
+            
+            // Salvar no IndexedDB para backup persistente
+            const backupTransaction = db.transaction(['backup'], 'readwrite');
+            const backupStore = backupTransaction.objectStore('backup');
+            
+            // Remover backup antigo
+            backupStore.clear();
+            
+            // Adicionar novo backup
+            const backup = {
+                dados: dados,
+                data: new Date().toISOString()
+            };
+            
+            backupStore.add(backup);
         };
     };
 }
