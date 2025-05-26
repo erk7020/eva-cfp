@@ -293,6 +293,7 @@ function adicionarCategoria() {
     
     transaction.oncomplete = () => {
         atualizarListaCategorias();
+        atualizarSelectCategorias();
         // Atualizar backup
         gerenciarBackup();
     };
@@ -353,6 +354,25 @@ function atualizarListaCategorias() {
             div.textContent = categoria.categoria;
             div.classList.add('categoria-item');
             lista.appendChild(div);
+        });
+    };
+}
+
+// Função para atualizar o select de categorias
+function atualizarSelectCategorias() {
+    const select = document.getElementById('categoria');
+    select.innerHTML = '<option value="">Selecione uma categoria</option>';
+    
+    const transaction = db.transaction(['categorias'], 'readonly');
+    const store = transaction.objectStore('categorias');
+    
+    store.getAll().onsuccess = (event) => {
+        const categorias = event.target.result;
+        categorias.forEach(categoria => {
+            const option = document.createElement('option');
+            option.value = categoria.categoria;
+            option.textContent = categoria.categoria;
+            select.appendChild(option);
         });
     };
 }
