@@ -275,7 +275,7 @@ function carregarCategorias() {
 }
 
 function adicionarCategoria() {
-    const nomeCategoria = document.getElementById('categoria-nome').value.trim();
+    const nomeCategoria = document.getElementById('nova-categoria').value.trim();
     
     if (!nomeCategoria) {
         alert('Por favor, digite um nome para a categoria');
