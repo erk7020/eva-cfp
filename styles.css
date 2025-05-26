@@ -58,6 +58,17 @@ body {
     .categoria-form {
         flex-direction: column;
     }
+
+    .saldo-acumulado {
+        margin-top: 15px;
+        padding: 10px;
+    }
+
+    .saldo-acumulado th,
+    .saldo-acumulado td {
+        padding: 8px;
+        font-size: 14px;
+    }
 }
 
 .container {
@@ -361,4 +372,75 @@ canvas {
 #btn-fechar-modal {
     width: 100%;
     margin-top: 20px;
+}
+
+.saldo-acumulado {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.saldo-acumulado h3 {
+    color: #333;
+    margin-bottom: 15px;
+    text-align: center;
+}
+
+.saldo-acumulado table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.saldo-acumulado th,
+.saldo-acumulado td {
+    padding: 10px;
+    text-align: center;
+    border-bottom: 1px solid #ddd;
+}
+
+.saldo-acumulado th {
+    background-color: #f5f5f5;
+    font-weight: bold;
+}
+
+.saldo-acumulado td.positivo {
+    color: #28a745;
+    font-weight: bold;
+}
+
+.saldo-acumulado td.negativo {
+    color: #dc3545;
+    font-weight: bold;
+}
+
+.saldo-total-anual {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    text-align: right;
+    font-size: 18px;
+    font-weight: bold;
+    color: #333;
+}
+
+.saldo-total-anual span.positivo {
+    color: #28a745;
+}
+
+.saldo-total-anual span.negativo {
+    color: #dc3545;
+}
+
+@media screen and (max-width: 768px) {
+    .saldo-total-anual {
+        margin-top: 15px;
+        padding: 10px;
+        font-size: 16px;
+    }
 }

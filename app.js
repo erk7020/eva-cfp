@@ -156,7 +156,9 @@ function adicionarTransacao() {
     
     transaction.oncomplete = () => {
         limparCampos();
+        // Ao adicionar transação, recarregar transações do mês atual e recalcular saldo cumulativo total
         carregarTransacoes();
+        calcularSaldoCumulativoTotal();
     };
 }
 
@@ -219,7 +221,9 @@ function removerTransacao(event) {
     store.delete(id);
     
     transaction.oncomplete = () => {
+        // Ao remover transação, recarregar transações do mês atual e recalcular saldo cumulativo total
         carregarTransacoes();
+        calcularSaldoCumulativoTotal();
     };
 }
 
@@ -348,11 +352,25 @@ function plotarGrafico(tipo) {
     
     // Salvar o último tipo de gráfico
     localStorage.setItem('ultimoGrafico', tipo);
+
+    // Remover a tabela de saldo acumulado mês a mês se existir
+    const tabelaSaldoMensal = document.getElementById('tabela-saldo');
+    if (tabelaSaldoMensal) {
+        tabelaSaldoMensal.remove();
+    }
+
+    // Remover o saldo cumulativo total se existir antes de decidir se exibe
+    const saldoTotalElement = document.getElementById('saldo-total-anual');
+    if (saldoTotalElement) {
+        saldoTotalElement.remove();
+    }
     
     if (tipo === 'despesas') {
         plotarDespesasPorCategoria(mes, ano);
-    } else {
+    } else if (tipo === 'evolucao') {
         plotarEvolucaoMensal(ano);
+        // Calcular e exibir o saldo cumulativo total APÓS plotar o gráfico de evolução
+        calcularSaldoCumulativoTotal();
     }
 }
 
@@ -530,7 +548,7 @@ function plotarEvolucaoMensal(ano) {
                 maintainAspectRatio: false,
                 plugins: {
                     title: {
-                        display: true,
+                        display: false,
                         text: `Evolução Mensal - ${ano}`
                     },
                     legend: {
@@ -554,6 +572,50 @@ function plotarEvolucaoMensal(ano) {
     request.onerror = (event) => {
         console.error('Erro ao buscar transações:', event.target.error);
         alert('Erro ao carregar dados do gráfico');
+    };
+}
+
+// Função para calcular e exibir o saldo cumulativo TOTAL do ano
+function calcularSaldoCumulativoTotal() {
+    const ano = parseInt(document.getElementById('ano-grafico').value); // Pega o ano do filtro de gráfico
+    const dataInicio = new Date(ano, 0, 1).toISOString();
+    const dataFim = new Date(ano, 11, 31, 23, 59, 59, 999).toISOString(); // Inclui até o último ms do ano
+
+    const transaction = db.transaction(['transacoes'], 'readonly');
+    const store = transaction.objectStore('transacoes');
+    const index = store.index('data');
+
+    const request = index.getAll(IDBKeyRange.bound(dataInicio, dataFim));
+
+    request.onsuccess = (event) => {
+        const todasTransacoesDoAno = event.target.result;
+        let saldoTotal = 0;
+
+        todasTransacoesDoAno.forEach(transacao => {
+            if (transacao.tipo === 'Receita') {
+                saldoTotal += transacao.valor;
+            } else {
+                saldoTotal -= transacao.valor;
+            }
+        });
+
+        // Atualiza ou cria o elemento para exibir o saldo cumulativo total
+        let saldoTotalElement = document.getElementById('saldo-total-anual');
+        if (!saldoTotalElement) {
+            const container = document.getElementById('grafico-container');
+            saldoTotalElement = document.createElement('div');
+            saldoTotalElement.id = 'saldo-total-anual';
+            saldoTotalElement.className = 'saldo-total-anual'; // Adiciona uma classe para estilizar
+            // Insere após o container do gráfico
+            container.parentNode.insertBefore(saldoTotalElement, container.nextSibling);
+        }
+
+        // Altera a frase para apenas "Saldo do Ano:" e atualiza o valor
+        saldoTotalElement.innerHTML = `Saldo do Ano: <span class="${saldoTotal >= 0 ? 'positivo' : 'negativo'}">R$ ${saldoTotal.toFixed(2)}</span>`;
+    };
+
+    request.onerror = (event) => {
+        console.error('Erro ao buscar transações para saldo total:', event.target.error);
     };
 }
 
