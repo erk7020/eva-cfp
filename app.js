@@ -13,6 +13,8 @@ request.onerror = (event) => {
 request.onsuccess = (event) => {
     db = event.target.result;
     inicializarAplicacao();
+    // Carregar backup inicial se existir
+    carregarBackup();
 };
 
 request.onupgradeneeded = (event) => {
@@ -27,7 +29,48 @@ request.onupgradeneeded = (event) => {
     // Criação do objeto store para categorias
     const categoriasStore = db.createObjectStore('categorias', { keyPath: 'id', autoIncrement: true });
     categoriasStore.createIndex('categoria', 'categoria', { unique: true });
+    
+    // Criação do objeto store para backup
+    const backupStore = db.createObjectStore('backup', { keyPath: 'id', autoIncrement: true });
+    backupStore.createIndex('data', 'data', { unique: false });
 };
+
+// Função para carregar backup inicial
+function carregarBackup() {
+    const transaction = db.transaction(['backup'], 'readonly');
+    const backupStore = transaction.objectStore('backup');
+    
+    const request = backupStore.getAll();
+    request.onsuccess = (event) => {
+        const backups = event.target.result;
+        if (backups.length > 0) {
+            const dados = backups[0].dados;
+            
+            // Limpar dados atuais
+            const transaction = db.transaction(['transacoes', 'categorias'], 'readwrite');
+            const transacoesStore = transaction.objectStore('transacoes');
+            const categoriasStore = transaction.objectStore('categorias');
+            
+            // Limpar dados atuais
+            transacoesStore.clear();
+            categoriasStore.clear();
+            
+            // Adicionar dados do backup
+            dados.transacoes.forEach(transacao => {
+                transacoesStore.add(transacao);
+            });
+            
+            dados.categorias.forEach(categoria => {
+                categoriasStore.add(categoria);
+            });
+            
+            // Recarregar dados
+            carregarTransacoes();
+            carregarCategorias();
+            calcularSaldoCumulativoTotal();
+        }
+    };
+}
 
 // Função para inicializar a aplicação
 function inicializarAplicacao() {
