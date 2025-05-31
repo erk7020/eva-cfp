@@ -5,8 +5,105 @@ const GITHUB_TOKEN = localStorage.getItem('github_token'); // Token será salvo 
 
 // Inicialização do IndexedDB
 const DB_NAME = 'EVA_CFP';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 let db;
+
+// Array de meses para formatação
+const meses = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+];
+
+// Função para formatar data
+function formatarData(data) {
+    return `${data.getDate().toString().padStart(2, '0')}/${(data.getMonth() + 1).toString().padStart(2, '0')}/${data.getFullYear()}`;
+}
+
+// Função para criar data a partir de string
+function criarData(dataStr) {
+    const [dia, mes, ano] = dataStr.split('/').map(Number);
+    return new Date(ano, mes - 1, dia);
+}
+
+// Função para fazer backup manual
+function fazerBackupManual() {
+    const transaction = db.transaction(['transacoes', 'categorias'], 'readonly');
+    const transacoesStore = transaction.objectStore('transacoes');
+    const categoriasStore = transaction.objectStore('categorias');
+    
+    const transacoesRequest = transacoesStore.getAll();
+    const categoriasRequest = categoriasStore.getAll();
+    
+    Promise.all([
+        new Promise((resolve, reject) => {
+            transacoesRequest.onsuccess = () => resolve(transacoesRequest.result);
+            transacoesRequest.onerror = () => reject(transacoesRequest.error);
+        }),
+        new Promise((resolve, reject) => {
+            categoriasRequest.onsuccess = () => resolve(categoriasRequest.result);
+            categoriasRequest.onerror = () => reject(categoriasRequest.error);
+        })
+    ]).then(([transacoes, categorias]) => {
+        const dados = {
+            transacoes: transacoes,
+            categorias: categorias,
+            dataBackup: new Date().toISOString()
+        };
+        
+        // Salvar no IndexedDB
+        const backupTransaction = db.transaction(['backup'], 'readwrite');
+        const backupStore = backupTransaction.objectStore('backup');
+        
+        // Limpar backup antigo
+        backupStore.clear();
+        backupStore.add(dados);
+        
+        backupTransaction.oncomplete = () => {
+            alert('Backup realizado com sucesso!');
+            salvarNoGitHub(dados); // Salvar no GitHub também
+        };
+    });
+}
+
+// Função para restaurar backup
+function restaurarBackup() {
+    const transaction = db.transaction(['backup'], 'readonly');
+    const backupStore = transaction.objectStore('backup');
+    
+    const request = backupStore.getAll();
+    request.onsuccess = (event) => {
+        const backups = event.target.result;
+        if (backups.length > 0) {
+            const dados = backups[0].dados;
+            
+            // Limpar dados atuais
+            const transaction = db.transaction(['transacoes', 'categorias'], 'readwrite');
+            const transacoesStore = transaction.objectStore('transacoes');
+            const categoriasStore = transaction.objectStore('categorias');
+            
+            transacoesStore.clear();
+            categoriasStore.clear();
+            
+            // Adicionar dados do backup
+            dados.transacoes.forEach(transacao => {
+                transacoesStore.add(transacao);
+            });
+            
+            dados.categorias.forEach(categoria => {
+                categoriasStore.add(categoria);
+            });
+            
+            transaction.oncomplete = () => {
+                alert('Backup restaurado com sucesso!');
+                carregarTransacoes();
+                carregarCategorias();
+                calcularSaldoCumulativoTotal();
+            };
+        } else {
+            alert('Nenhum backup encontrado');
+        }
+    };
+}
 
 // Abre a conexão com o banco de dados
 const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -185,40 +282,48 @@ function configurarEventos() {
             }
         });
     });
+    
+    // Eventos de backup
+    document.getElementById('btn-fazer-backup').addEventListener('click', fazerBackupManual);
+    document.getElementById('btn-restaurar-backup').addEventListener('click', restaurarBackup);
 }
 
 // Funções de transações
 function adicionarTransacao() {
     const tipo = document.getElementById('tipo-transacao').value;
-    const valor = parseFloat(document.getElementById('valor').value) || 0;
+    const valor = parseFloat(document.getElementById('valor').value);
     const descricao = document.getElementById('descricao').value;
     const categoria = document.getElementById('categoria').value;
-    const data = new Date().toISOString();
-    
-    if (!tipo || valor <= 0 || !descricao || !categoria) {
-        alert('Por favor, preencha todos os campos corretamente');
+    const dataInput = document.getElementById('data-transacao').value;
+    const data = dataInput ? new Date(dataInput) : new Date();
+
+    if (!tipo || isNaN(valor) || !descricao || !categoria) {
+        alert('Por favor, preencha todos os campos obrigatórios');
         return;
     }
-    
+
     const transacao = {
-        tipo,
-        valor,
-        descricao,
-        categoria,
-        data
+        tipo: tipo,
+        valor: valor,
+        descricao: descricao,
+        categoria: categoria,
+        data: data.toISOString()
     };
-    
+
     const transaction = db.transaction(['transacoes'], 'readwrite');
-    const store = transaction.objectStore('transacoes');
-    store.add(transacao);
-    
+    const transacoesStore = transaction.objectStore('transacoes');
+    transacoesStore.add(transacao);
+
     transaction.oncomplete = () => {
-        limparCampos();
-        // Ao adicionar transação, recarregar transações do mês atual e recalcular saldo cumulativo total
+        alert('Transação adicionada com sucesso!');
         carregarTransacoes();
         calcularSaldoCumulativoTotal();
-        // Atualizar backup
-        gerenciarBackup();
+        limparCampos();
+        gerenciarBackup(); // Fazer backup após adicionar transação
+    };
+
+    transaction.onerror = () => {
+        alert('Erro ao adicionar transação');
     };
 }
 
@@ -636,54 +741,67 @@ function plotarDespesasPorCategoria(mes, ano) {
     };
 }
 
-function plotarEvolucaoMensal(ano) {
-    // Buscar transações do ano selecionado
-    const dataInicio = new Date(ano, 0, 1).toISOString();
-    const dataFim = new Date(ano, 11, 31).toISOString();
-    
+function plotarEvolucaoMensal() {
     const transaction = db.transaction(['transacoes'], 'readonly');
     const store = transaction.objectStore('transacoes');
-    const index = store.index('data');
     
-    const request = index.getAll(IDBKeyRange.bound(dataInicio, dataFim));
-    
+    const request = store.getAll();
     request.onsuccess = (event) => {
         const transacoes = event.target.result;
+        const meses = [];
+        const receitas = [];
+        const despesas = [];
         
-        // Agrupar por mês e tipo
-        const mesReceitas = Array(12).fill(0);
-        const mesDespesas = Array(12).fill(0);
+        // Obter transações dos últimos 12 meses
+        const hoje = new Date();
+        const anoAtual = hoje.getFullYear();
+        const mesAtual = hoje.getMonth() + 1;
         
-        transacoes.forEach(transacao => {
-            const mes = new Date(transacao.data).getMonth();
-            if (transacao.tipo === 'Receita') {
-                mesReceitas[mes] += transacao.valor;
-            } else {
-                mesDespesas[mes] += transacao.valor;
-            }
+        // Criar array de 12 meses
+        for (let i = 0; i < 12; i++) {
+            const mes = mesAtual - i;
+            const ano = mes > 0 ? anoAtual : anoAtual - 1;
+            const mesCorrigido = mes > 0 ? mes : mes + 12;
+            meses.unshift(`${ano}-${mesCorrigido.toString().padStart(2, '0')}`);
+        }
+        
+        // Calcular receitas e despesas para cada mês
+        meses.forEach(mesStr => {
+            const [ano, mes] = mesStr.split('-').map(Number);
+            const transacoesDoMes = transacoes.filter(t => {
+                const data = new Date(t.data);
+                return data.getFullYear() === ano && data.getMonth() + 1 === mes;
+            });
+            
+            const receitasMes = transacoesDoMes.filter(t => t.tipo === 'Receita')
+                .reduce((acc, t) => acc + t.valor, 0);
+            const despesasMes = transacoesDoMes.filter(t => t.tipo === 'Despesa')
+                .reduce((acc, t) => acc + t.valor, 0);
+            
+            receitas.push(receitasMes);
+            despesas.push(despesasMes);
         });
         
-        // Criar gráfico
-        const canvas = document.getElementById('grafico');
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
+        // Plotar gráfico
+        const ctx = document.getElementById('grafico-evolucao').getContext('2d');
         new Chart(ctx, {
-            type: 'bar',
+            type: 'line',
             data: {
-                labels: meses,
+                labels: meses.map(m => m.replace('-', '/')),
                 datasets: [
                     {
                         label: 'Receitas',
-                        data: mesReceitas,
-                        backgroundColor: 'rgba(54, 162, 235, 0.6)',
-                        borderWidth: 1
+                        data: receitas,
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0.1,
+                        fill: false
                     },
                     {
                         label: 'Despesas',
-                        data: mesDespesas,
-                        backgroundColor: 'rgba(255, 99, 132, 0.6)',
-                        borderWidth: 1
+                        data: despesas,
+                        borderColor: 'rgb(255, 99, 132)',
+                        tension: 0.1,
+                        fill: false
                     }
                 ]
             },
@@ -692,11 +810,8 @@ function plotarEvolucaoMensal(ano) {
                 maintainAspectRatio: false,
                 plugins: {
                     title: {
-                        display: false,
-                        text: `Evolução Mensal - ${ano}`
-                    },
-                    legend: {
-                        position: 'bottom'
+                        display: true,
+                        text: 'Evolução Mensal dos Últimos 12 Meses'
                     }
                 },
                 scales: {
@@ -704,7 +819,7 @@ function plotarEvolucaoMensal(ano) {
                         beginAtZero: true,
                         ticks: {
                             callback: function(value) {
-                                return 'R$ ' + value.toFixed(2);
+                                return 'R$ ' + value.toLocaleString('pt-BR');
                             }
                         }
                     }
