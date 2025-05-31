@@ -85,28 +85,53 @@ function carregarBackup() {
 
 // Função para inicializar a aplicação
 function inicializarAplicacao() {
-    // Carregar categorias existentes
-    carregarCategorias();
-    
-    // Configurar eventos
-    configurarEventos();
-    
-    // Obter mês e ano atual
     const hoje = new Date();
-    const mesAtual = hoje.getMonth() + 1; // +1 porque getMonth() retorna de 0-11
+    const mesAtual = hoje.getMonth() + 1;
     const anoAtual = hoje.getFullYear();
     
-    // Selecionar mês atual nos filtros
+    // Inicializar filtros
     document.getElementById('mes-filtro').value = mesAtual;
     document.getElementById('ano-filtro').value = anoAtual;
     document.getElementById('mes-grafico').value = mesAtual;
     document.getElementById('ano-grafico').value = anoAtual;
     
-    // Carregar transações do mês atual
+    // Carregar categorias existentes
+    carregarCategorias();
+    
+    // Carregar dados iniciais
     carregarTransacoes();
+    carregarCategorias();
     
     // Inicializar gráfico
     inicializarGrafico();
+    
+    // Atualizar visibilidade do campo de dia
+    atualizarVisibilidadeCampoDia();
+    
+    // Adicionar eventos
+    configurarEventos();
+    configurarEventosModalCategorias();
+}
+
+// Função para atualizar a visibilidade do campo de dia
+function atualizarVisibilidadeCampoDia() {
+    const mesFiltro = document.getElementById('mes-filtro');
+    const anoFiltro = document.getElementById('ano-filtro');
+    const diaTransacao = document.getElementById('dia-transacao');
+    const hoje = new Date();
+    const mesAtual = hoje.getMonth() + 1;
+    const anoAtual = hoje.getFullYear();
+    
+    // Mostrar campo de dia se mês/ano selecionado for diferente do atual
+    const mostrarCampoDia = mesFiltro.value !== mesAtual.toString() || anoFiltro.value !== anoAtual.toString();
+    
+    if (mostrarCampoDia) {
+        diaTransacao.style.display = 'block';
+        diaTransacao.required = true;
+    } else {
+        diaTransacao.style.display = 'none';
+        diaTransacao.required = false;
+    }
 }
 
 // Função para inicializar o gráfico
@@ -139,22 +164,28 @@ function inicializarGrafico() {
 
 // Configuração de eventos
 function configurarEventos() {
-    // Eventos da aba de transações
-    document.getElementById('btn-adicionar').addEventListener('click', adicionarTransacao);
-    document.getElementById('mes-filtro').addEventListener('change', () => carregarTransacoes());
-    document.getElementById('ano-filtro').addEventListener('change', () => carregarTransacoes());
+    // Eventos dos filtros
+    const mesFiltro = document.getElementById('mes-filtro');
+    const anoFiltro = document.getElementById('ano-filtro');
     
-    // Eventos da aba de gráficos
+    mesFiltro.addEventListener('change', () => {
+        carregarTransacoes();
+        atualizarVisibilidadeCampoDia();
+    });
+    
+    anoFiltro.addEventListener('change', () => {
+        carregarTransacoes();
+        atualizarVisibilidadeCampoDia();
+    });
+    
+    // Eventos do formulário
+    document.getElementById('btn-adicionar').addEventListener('click', adicionarTransacao);
+    
+    // Eventos dos gráficos
+    document.getElementById('mes-grafico').addEventListener('change', atualizarGrafico);
+    document.getElementById('ano-grafico').addEventListener('change', atualizarGrafico);
     document.getElementById('btn-despesas').addEventListener('click', () => plotarGrafico('despesas'));
     document.getElementById('btn-evolucao').addEventListener('click', () => plotarGrafico('evolucao'));
-    document.getElementById('mes-grafico').addEventListener('change', () => atualizarGrafico());
-    document.getElementById('ano-grafico').addEventListener('change', () => atualizarGrafico());
-    
-    // Eventos do modal de categorias
-    document.getElementById('btn-gerenciar-categorias').addEventListener('click', abrirModalCategorias);
-    document.getElementById('btn-adicionar-categoria').addEventListener('click', adicionarCategoria);
-    document.getElementById('btn-remover-categoria').addEventListener('click', removerCategoria);
-    document.getElementById('btn-fechar-modal').addEventListener('click', fecharModalCategorias);
     
     // Eventos de exportação/importação
     document.getElementById('btn-exportar-dados').addEventListener('click', exportarDados);
@@ -190,22 +221,27 @@ function configurarEventos() {
 // Funções de transações
 function adicionarTransacao() {
     const tipo = document.getElementById('tipo-transacao').value;
-    const valor = parseFloat(document.getElementById('valor').value) || 0;
+    const valor = parseFloat(document.getElementById('valor').value);
     const descricao = document.getElementById('descricao').value;
     const categoria = document.getElementById('categoria').value;
-    const data = new Date().toISOString();
+    const dia = parseInt(document.getElementById('dia-transacao').value);
+    const mes = parseInt(document.getElementById('mes-filtro').value);
+    const ano = parseInt(document.getElementById('ano-filtro').value);
     
-    if (!tipo || valor <= 0 || !descricao || !categoria) {
-        alert('Por favor, preencha todos os campos corretamente');
+    if (!tipo || isNaN(valor) || !descricao || !categoria) {
+        alert('Por favor, preencha todos os campos obrigatórios');
         return;
     }
-    
+
+    // Se não selecionou dia, usar data atual
+    const data = dia ? new Date(ano, mes - 1, dia) : new Date();
+
     const transacao = {
-        tipo,
-        valor,
-        descricao,
-        categoria,
-        data
+        tipo: tipo,
+        valor: valor,
+        descricao: descricao,
+        categoria: categoria,
+        data: data.toISOString()
     };
     
     const transaction = db.transaction(['transacoes'], 'readwrite');
@@ -329,81 +365,62 @@ function carregarCategorias() {
 }
 
 function adicionarCategoria() {
-    const nomeCategoria = document.getElementById('nova-categoria').value.trim();
+    const input = document.getElementById('nova-categoria');
+    const novaCategoria = input.value.trim();
     
-    if (!nomeCategoria) {
-        alert('Por favor, digite um nome para a categoria');
-        return;
+    if (novaCategoria) {
+        const transaction = db.transaction(['categorias'], 'readwrite');
+        const store = transaction.objectStore('categorias');
+        
+        store.add({ categoria: novaCategoria });
+        
+        transaction.oncomplete = () => {
+            input.value = '';
+            carregarCategorias();
+            atualizarSelectCategorias();
+            gerenciarBackup();
+        };
     }
-    
-    const transaction = db.transaction(['categorias'], 'readwrite');
-    const store = transaction.objectStore('categorias');
-    
-    const categoria = {
-        categoria: nomeCategoria
-    };
-    
-    store.add(categoria);
-    
-    transaction.oncomplete = () => {
-        atualizarListaCategorias();
-        atualizarSelectCategorias();
-        // Atualizar backup
-        gerenciarBackup();
-    };
 }
 
 function removerCategoria() {
-    const select = document.getElementById('categorias-lista');
-    const categoriaSelecionada = select.value.trim();
+    const lista = document.getElementById('categorias-lista');
+    const categoriaSelecionada = lista.querySelector('.categoria-selecionada');
     
     if (!categoriaSelecionada) {
         alert('Selecione uma categoria para remover');
         return;
     }
     
+    const categoria = categoriaSelecionada.textContent;
+    
     // Verificar se a categoria está sendo usada em alguma transação
     const transacaoTransaction = db.transaction(['transacoes'], 'readonly');
     const transacoesStore = transacaoTransaction.objectStore('transacoes');
-    const transacoesIndex = transacoesStore.index('categoria');
     
-    const request = transacoesIndex.getAll(categoriaSelecionada);
+    const request = transacoesStore.getAll();
     request.onsuccess = (event) => {
         const transacoes = event.target.result;
+        const transacoesUsandoCategoria = transacoes.filter(t => t.categoria === categoria);
         
-        if (transacoes.length > 0) {
-            alert('Esta categoria não pode ser removida porque está sendo usada em transações.\n\nTransações usando esta categoria:\n' + 
-                transacoes.map(t => `${t.descricao} (${t.tipo})`).join('\n'));
+        if (transacoesUsandoCategoria.length > 0) {
+            alert('Esta categoria não pode ser removida porque está sendo usada em transações.');
             return;
         }
     };
     
-    if (!confirm(`Tem certeza que deseja remover a categoria "${categoriaSelecionada}"?`)) {
-        return;
+    if (confirm(`Tem certeza que deseja remover a categoria "${categoria}"?`)) {
+        const transaction = db.transaction(['categorias'], 'readwrite');
+        const store = transaction.objectStore('categorias');
+        
+        store.delete(categoria);
+        
+        transaction.oncomplete = () => {
+            carregarCategorias();
+            atualizarSelectCategorias();
+            gerenciarBackup();
+        };
     }
-    
-    const transaction = db.transaction(['categorias'], 'readwrite');
-    const store = transaction.objectStore('categorias');
-    const index = store.index('categoria');
-    
-    index.get(categoriaSelecionada).onsuccess = (event) => {
-        const categoria = event.target.result;
-        if (categoria) {
-            store.delete(categoria.id);
-            
-            transaction.oncomplete = () => {
-                atualizarListaCategorias();
-                atualizarSelectCategorias(); // Atualizar o select também
-                // Atualizar backup
-                gerenciarBackup();
-            };
-            
-            transaction.onerror = (event) => {
-                console.error('Erro ao remover categoria:', event.target.error);
-                alert('Erro ao remover categoria. Por favor, tente novamente.');
-            };
-        }
-    };
 }
 
 // Funções do modal
@@ -418,10 +435,9 @@ function fecharModalCategorias() {
 
 function atualizarListaCategorias() {
     const lista = document.getElementById('categorias-lista');
-    lista.innerHTML = '';
+    if (!lista) return;
     
-    // Pegar a categoria selecionada no select de transações
-    const categoriaSelecionada = document.getElementById('categoria').value;
+    lista.innerHTML = '';
     
     const transaction = db.transaction(['categorias'], 'readonly');
     const store = transaction.objectStore('categorias');
@@ -433,18 +449,13 @@ function atualizarListaCategorias() {
             div.textContent = categoria.categoria;
             div.classList.add('categoria-item');
             
-            // Adicionar classe para destacar a categoria selecionada
-            if (categoria.categoria === categoriaSelecionada) {
-                div.classList.add('categoria-selecionada');
-            }
-            
             // Adicionar evento de clique para selecionar a categoria
             div.addEventListener('click', () => {
                 lista.querySelectorAll('.categoria-selecionada').forEach(item => {
                     item.classList.remove('categoria-selecionada');
                 });
                 div.classList.add('categoria-selecionada');
-                lista.value = categoria.categoria;
+                document.getElementById('categoria').value = categoria.categoria;
             });
             
             lista.appendChild(div);
@@ -488,11 +499,11 @@ function plotarGrafico(tipo) {
         if (existingChart) {
             existingChart.destroy();
         }
+        
+        // Limpar canvas
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
-    
-    // Limpar canvas
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     // Salvar o último tipo de gráfico
     localStorage.setItem('ultimoGrafico', tipo);
@@ -522,21 +533,23 @@ function plotarDespesasPorCategoria(mes, ano) {
     console.log('Plotando gráfico de despesas para:', mes, ano);
     
     // Buscar transações do mês selecionado
-    const dataInicio = new Date(ano, mes - 1, 1).toISOString();
-    const dataFim = new Date(ano, mes, 0).toISOString();
-    
     const transaction = db.transaction(['transacoes'], 'readonly');
     const store = transaction.objectStore('transacoes');
-    const index = store.index('data');
     
-    const request = index.getAll(IDBKeyRange.bound(dataInicio, dataFim));
+    const request = store.getAll();
     
     request.onsuccess = (event) => {
         const transacoes = event.target.result;
         console.log('Transações encontradas:', transacoes.length);
         
+        // Filtrar transações do mês selecionado
+        const transacoesDoMes = transacoes.filter(transacao => {
+            const data = new Date(transacao.data);
+            return data.getMonth() + 1 === mes && data.getFullYear() === ano;
+        });
+        
         // Filtrar apenas despesas
-        const despesas = transacoes.filter(t => t.tipo === 'Despesa');
+        const despesas = transacoesDoMes.filter(t => t.tipo === 'Despesa');
         console.log('Despesas encontradas:', despesas.length);
         
         // Verificar se há despesas
@@ -581,6 +594,11 @@ function plotarDespesasPorCategoria(mes, ano) {
         
         // Criar gráfico
         const canvas = document.getElementById('grafico');
+        if (!canvas) {
+            console.error('Canvas não encontrado');
+            return;
+        }
+        
         const ctx = canvas.getContext('2d');
         
         new Chart(ctx, {
