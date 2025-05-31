@@ -46,6 +46,48 @@ request.onupgradeneeded = (event) => {
     }
 };
 
+// Função para limpar o banco de dados
+function limparBancoDeDados() {
+    // Fechar conexão atual
+    if (db) {
+        db.close();
+    }
+
+    // Abrir conexão para deletar o banco
+    const deleteRequest = indexedDB.deleteDatabase(DB_NAME);
+    deleteRequest.onsuccess = () => {
+        console.log('Banco de dados deletado com sucesso');
+        // Reabrir o banco
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            
+            // Criar os stores novamente
+            const transacoesStore = db.createObjectStore('transacoes', { keyPath: 'id', autoIncrement: true });
+            transacoesStore.createIndex('data', 'data', { unique: false });
+            transacoesStore.createIndex('tipo', 'tipo', { unique: false });
+            transacoesStore.createIndex('categoria', 'categoria', { unique: false });
+            
+            const categoriasStore = db.createObjectStore('categorias', { keyPath: 'id', autoIncrement: true });
+            categoriasStore.createIndex('categoria', 'categoria', { unique: true });
+            
+            const backupStore = db.createObjectStore('backup', { keyPath: 'id', autoIncrement: true });
+            backupStore.createIndex('data', 'data', { unique: false });
+        };
+        
+        request.onsuccess = () => {
+            console.log('Banco de dados recriado com sucesso');
+            // Recarregar a página para garantir que tudo esteja limpo
+            window.location.reload();
+        };
+    };
+    
+    deleteRequest.onerror = () => {
+        console.error('Erro ao deletar banco de dados');
+        alert('Erro ao limpar dados. Por favor, tente novamente.');
+    };
+}
+
 // Função para carregar backup inicial
 function carregarBackup() {
     const transaction = db.transaction(['backup'], 'readonly');
@@ -158,8 +200,41 @@ function configurarEventos() {
     
     // Eventos de exportação/importação
     document.getElementById('btn-exportar-dados').addEventListener('click', exportarDados);
-    document.getElementById('btn-importar-dados').addEventListener('click', importarDados);
+
+    // Criar elemento input de arquivo uma única vez
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.style.display = 'none';
+    document.body.appendChild(input);
     
+    input.onchange = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const dados = JSON.parse(e.target.result);
+                    importarDados(dados);
+                } catch (error) {
+                    console.error('Erro ao processar arquivo:', error);
+                    alert('Erro ao importar dados. O arquivo não está no formato correto.');
+                }
+            };
+            reader.readAsText(file);
+        }
+    };
+    
+    document.getElementById('btn-importar-dados').addEventListener('click', () => {
+        input.click();
+    });
+
+    document.getElementById('btn-limpar-dados').addEventListener('click', () => {
+        if (confirm('Tem certeza que deseja limpar todos os dados? Esta ação não pode ser desfeita.')) {
+            limparBancoDeDados();
+        }
+    });
+
     // Eventos de navegação entre abas
     const tabBtns = document.querySelectorAll('.tab-btn');
     tabBtns.forEach(btn => {
@@ -188,17 +263,55 @@ function configurarEventos() {
 }
 
 // Funções de transações
+// Função auxiliar para verificar se o mês selecionado é diferente do atual
+function mesDiferenteAtual(mesSelecionado, anoSelecionado) {
+    const dataAtual = new Date();
+    const mesAtual = dataAtual.getMonth() + 1;
+    const anoAtual = dataAtual.getFullYear();
+    
+    // Se o ano for diferente, é diferente do atual
+    if (anoSelecionado !== anoAtual) {
+        return true;
+    }
+    
+    // Se o mês for diferente, é diferente do atual
+    return mesSelecionado !== mesAtual;
+}
+
 function adicionarTransacao() {
     const tipo = document.getElementById('tipo-transacao').value;
     const valor = parseFloat(document.getElementById('valor').value) || 0;
     const descricao = document.getElementById('descricao').value;
     const categoria = document.getElementById('categoria').value;
-    const data = new Date().toISOString();
+    const dia = parseInt(document.getElementById('dia-transacao').value);
+    const mes = parseInt(document.getElementById('mes-filtro').value);
+    const ano = parseInt(document.getElementById('ano-filtro').value);
+    
+    // Verificar se o campo dia é obrigatório
+    const campoDiaObrigatorio = mesDiferenteAtual(mes, ano);
     
     if (!tipo || valor <= 0 || !descricao || !categoria) {
         alert('Por favor, preencha todos os campos corretamente');
         return;
     }
+    
+    if (campoDiaObrigatorio && !dia) {
+        alert('Por favor, insira o dia da transação quando o mês for diferente do atual');
+        return;
+    }
+    
+    // Se o mês for atual e não foi informado dia, usar o dia atual
+    const diaUsar = campoDiaObrigatorio ? dia : dia || new Date().getDate();
+    
+    const data = new Date(ano, mes - 1, diaUsar).toISOString();
+    
+    console.log('Dados da transação a serem adicionados:', {
+        tipo,
+        valor,
+        descricao,
+        categoria,
+        data
+    });
     
     const transacao = {
         tipo,
@@ -210,9 +323,16 @@ function adicionarTransacao() {
     
     const transaction = db.transaction(['transacoes'], 'readwrite');
     const store = transaction.objectStore('transacoes');
-    store.add(transacao);
+    
+    // Adicionar evento de sucesso na adição da transação
+    const request = store.add(transacao);
+    request.onsuccess = (event) => {
+        console.log('Transação adicionada com sucesso. ID:', event.target.result);
+        transacao.id = event.target.result; // Salvar o ID gerado
+    };
     
     transaction.oncomplete = () => {
+        console.log('Transação completa');
         limparCampos();
         // Ao adicionar transação, recarregar transações do mês atual e recalcular saldo cumulativo total
         carregarTransacoes();
@@ -220,24 +340,46 @@ function adicionarTransacao() {
         // Atualizar backup
         gerenciarBackup();
     };
+    
+    transaction.onerror = (event) => {
+        console.error('Erro ao adicionar transação:', event.target.error);
+    };
 }
 
 function carregarTransacoes() {
     const mes = parseInt(document.getElementById('mes-filtro').value);
     const ano = parseInt(document.getElementById('ano-filtro').value);
-    const dataInicio = new Date(ano, mes - 1, 1).toISOString();
-    const dataFim = new Date(ano, mes, 0).toISOString();
+    
+    console.log('Carregando transações para:', mes, ano);
     
     const transaction = db.transaction(['transacoes'], 'readonly');
     const store = transaction.objectStore('transacoes');
-    const index = store.index('data');
     
-    const request = index.getAll(IDBKeyRange.bound(dataInicio, dataFim));
+    // Primeiro, vamos carregar todas as transações
+    const request = store.getAll();
     
     request.onsuccess = (event) => {
-        const transacoes = event.target.result;
-        atualizarTabela(transacoes);
-        calcularSaldo(transacoes);
+        const todasTransacoes = event.target.result;
+        console.log('Todas as transações no banco:', todasTransacoes);
+        
+        // Ordenar transações por data (mais recentes primeiro)
+        todasTransacoes.sort((a, b) => {
+            return new Date(b.data) - new Date(a.data);
+        });
+        
+        // Filtrar transações pelo mês e ano usando JavaScript
+        const transacoesFiltradas = todasTransacoes.filter(transacao => {
+            const dataTransacao = new Date(transacao.data);
+            return dataTransacao.getMonth() + 1 === mes && dataTransacao.getFullYear() === ano;
+        });
+        
+        console.log('Transações filtradas:', transacoesFiltradas);
+        atualizarTabela(transacoesFiltradas);
+        calcularSaldo(transacoesFiltradas);
+    };
+    
+    request.onerror = (event) => {
+        console.error('Erro ao carregar transações:', event.target.error);
     };
 }
 
@@ -245,7 +387,10 @@ function atualizarTabela(transacoes) {
     const tbody = document.querySelector('#transacoes-tabela tbody');
     tbody.innerHTML = '';
     
+    console.log('Atualizando tabela com', transacoes.length, 'transações');
+    
     transacoes.forEach(transacao => {
+        console.log('Adicionando linha para transação:', transacao);
         const linha = document.createElement('tr');
         
         linha.innerHTML = `
@@ -521,31 +666,33 @@ function plotarGrafico(tipo) {
 function plotarDespesasPorCategoria(mes, ano) {
     console.log('Plotando gráfico de despesas para:', mes, ano);
     
-    // Buscar transações do mês selecionado
-    const dataInicio = new Date(ano, mes - 1, 1).toISOString();
-    const dataFim = new Date(ano, mes, 0).toISOString();
-    
     const transaction = db.transaction(['transacoes'], 'readonly');
     const store = transaction.objectStore('transacoes');
-    const index = store.index('data');
     
-    const request = index.getAll(IDBKeyRange.bound(dataInicio, dataFim));
+    const request = store.getAll();
     
     request.onsuccess = (event) => {
-        const transacoes = event.target.result;
-        console.log('Transações encontradas:', transacoes.length);
+        const todasTransacoes = event.target.result;
+        console.log('Todas as transações no banco:', todasTransacoes);
+        
+        // Filtrar transações pelo mês e ano usando JavaScript
+        const transacoesFiltradas = todasTransacoes.filter(transacao => {
+            const dataTransacao = new Date(transacao.data);
+            return dataTransacao.getMonth() + 1 === mes && dataTransacao.getFullYear() === ano;
+        });
+        
+        console.log('Transações filtradas:', transacoesFiltradas.length);
         
         // Filtrar apenas despesas
-        const despesas = transacoes.filter(t => t.tipo === 'Despesa');
+        const despesas = transacoesFiltradas.filter(t => t.tipo === 'Despesa');
         console.log('Despesas encontradas:', despesas.length);
         
-        // Verificar se há despesas
         if (despesas.length === 0) {
             alert('Nenhuma despesa encontrada para o período selecionado');
             return;
         }
         
-        // Agrupar por categoria
+        // Resto do código permanece igual...
         const categorias = {};
         despesas.forEach(transacao => {
             if (!categorias[transacao.categoria]) {
@@ -554,17 +701,14 @@ function plotarDespesasPorCategoria(mes, ano) {
             categorias[transacao.categoria] += transacao.valor;
         });
         
-        // Preparar dados para o gráfico
         const labels = Object.keys(categorias);
         const data = Object.values(categorias);
         
-        // Verificar se há dados para plotar
         if (labels.length === 0 || data.length === 0) {
             alert('Não há dados para plotar o gráfico');
             return;
         }
         
-        // Gerar cores aleatórias se necessário
         const cores = [];
         const coresPadrao = [
             'rgba(255, 99, 132, 0.6)',
@@ -579,7 +723,6 @@ function plotarDespesasPorCategoria(mes, ano) {
             cores.push(coresPadrao[index % coresPadrao.length]);
         });
         
-        // Criar gráfico
         const canvas = document.getElementById('grafico');
         const ctx = canvas.getContext('2d');
         
@@ -637,52 +780,74 @@ function plotarDespesasPorCategoria(mes, ano) {
 }
 
 function plotarEvolucaoMensal(ano) {
-    // Buscar transações do ano selecionado
-    const dataInicio = new Date(ano, 0, 1).toISOString();
-    const dataFim = new Date(ano, 11, 31).toISOString();
+    console.log('Plotando evolução mensal para:', ano);
     
     const transaction = db.transaction(['transacoes'], 'readonly');
     const store = transaction.objectStore('transacoes');
-    const index = store.index('data');
     
-    const request = index.getAll(IDBKeyRange.bound(dataInicio, dataFim));
+    const request = store.getAll();
     
     request.onsuccess = (event) => {
         const transacoes = event.target.result;
+        console.log('Transações encontradas:', transacoes.length);
+        
+        // Filtrar transações pelo ano
+        const transacoesAno = transacoes.filter(t => {
+            const data = new Date(t.data);
+            return data.getFullYear() === ano;
+        });
         
         // Agrupar por mês e tipo
-        const mesReceitas = Array(12).fill(0);
-        const mesDespesas = Array(12).fill(0);
+        const dados = {
+            meses: [],
+            receitas: [],
+            despesas: [],
+            saldoAcumulado: []
+        };
         
-        transacoes.forEach(transacao => {
-            const mes = new Date(transacao.data).getMonth();
-            if (transacao.tipo === 'Receita') {
-                mesReceitas[mes] += transacao.valor;
-            } else {
-                mesDespesas[mes] += transacao.valor;
-            }
-        });
+        let saldoAcumulado = 0;
+        
+        for (let mes = 1; mes <= 12; mes++) {
+            const transacoesMes = transacoesAno.filter(t => {
+                const data = new Date(t.data);
+                return data.getMonth() + 1 === mes;
+            });
+            
+            const receitasMes = transacoesMes.filter(t => t.tipo === 'Receita')
+                .reduce((sum, t) => sum + t.valor, 0);
+            const despesasMes = transacoesMes.filter(t => t.tipo === 'Despesa')
+                .reduce((sum, t) => sum + t.valor, 0);
+            
+            saldoAcumulado += receitasMes - despesasMes;
+            
+            dados.meses.push(mes);
+            dados.receitas.push(receitasMes);
+            dados.despesas.push(despesasMes);
+            dados.saldoAcumulado.push(saldoAcumulado);
+        }
         
         // Criar gráfico
         const canvas = document.getElementById('grafico');
         const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: meses,
+                labels: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+                        'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
                 datasets: [
                     {
                         label: 'Receitas',
-                        data: mesReceitas,
+                        data: dados.receitas,
                         backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
                         borderWidth: 1
                     },
                     {
                         label: 'Despesas',
-                        data: mesDespesas,
+                        data: dados.despesas,
                         backgroundColor: 'rgba(255, 99, 132, 0.6)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
                         borderWidth: 1
                     }
                 ]
@@ -691,12 +856,11 @@ function plotarEvolucaoMensal(ano) {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    title: {
-                        display: false,
-                        text: `Evolução Mensal - ${ano}`
-                    },
                     legend: {
-                        position: 'bottom'
+                        position: 'top'
+                    },
+                    datalabels: {
+                        display: false
                     }
                 },
                 scales: {
@@ -711,6 +875,8 @@ function plotarEvolucaoMensal(ano) {
                 }
             }
         });
+        
+        console.log('Gráfico de evolução mensal criado com sucesso');
     };
     
     request.onerror = (event) => {
@@ -721,132 +887,62 @@ function plotarEvolucaoMensal(ano) {
 
 // Funções de exportação/importação
 function exportarDados() {
-    // Primeiro tentar obter dados do IndexedDB
-    const transaction = db.transaction(['backup'], 'readonly');
-    const backupStore = transaction.objectStore('backup');
+    const transaction = db.transaction(['transacoes', 'categorias'], 'readonly');
+    const transacoesStore = transaction.objectStore('transacoes');
+    const categoriasStore = transaction.objectStore('categorias');
     
-    const request = backupStore.getAll();
-    request.onsuccess = (event) => {
-        const backups = event.target.result;
-        if (backups.length > 0) {
-            const dados = backups[0].dados; // Pega os dados do último backup
-            exportarDadosJSON(dados);
-        } else {
-            // Se não houver backup no IndexedDB, tentar usar localStorage
-            const dados = JSON.parse(localStorage.getItem('cfp_backup') || '{}');
-            
-            if (!dados.transacoes || !dados.categorias) {
-                alert('Nenhum backup encontrado. Por favor, faça uma alteração no sistema para gerar um backup.');
-                return;
-            }
-            exportarDadosJSON(dados);
-        }
-    };
+    const requestTransacoes = transacoesStore.getAll();
+    const requestCategorias = categoriasStore.getAll();
     
-    request.onerror = (event) => {
-        console.error('Erro ao buscar backup:', event.target.error);
-        alert('Erro ao exportar dados. Por favor, tente novamente.');
-    };
+    Promise.all([
+        new Promise((resolve) => requestTransacoes.onsuccess = () => resolve(requestTransacoes.result)),
+        new Promise((resolve) => requestCategorias.onsuccess = () => resolve(requestCategorias.result))
+    ]).then(([transacoes, categorias]) => {
+        const dados = {
+            transacoes,
+            categorias
+        };
+        
+        exportarDadosJSON(dados);
+    });
 }
 
 function exportarDadosJSON(dados) {
-    // Gerar nome do arquivo com data atual
-    const hoje = new Date();
-    const ano = hoje.getFullYear();
-    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-    const dia = String(hoje.getDate()).padStart(2, '0');
-    const nomeArquivo = `cfp-dados-${ano}-${mes}-${dia}.json`;
-    
-    try {
-        // Criar blob e gerar link para download
-        const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
-        const url = window.URL.createObjectURL(blob);
-        
-        // Verificar se o navegador suporta download
-        if (typeof document.createElement('a').download !== 'undefined') {
-            // Método para navegadores que suportam download
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = nomeArquivo;
-            document.body.appendChild(a);
-            
-            // Adicionar um pequeno delay para garantir que o elemento esteja pronto
-            setTimeout(() => {
-                a.click();
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-            }, 100);
-        } else {
-            // Método alternativo para navegadores que não suportam download
-            const link = document.createElement('a');
-            link.href = url;
-            link.target = '_blank';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
-        }
-    } catch (error) {
-        console.error('Erro ao exportar dados:', error);
-        alert('Erro ao exportar dados. Por favor, tente novamente.');
-    }
+    const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dados-cfp-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 }
 
-function importarDados() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
+function importarDados(dados) {
+    // Limpar dados atuais
+    const transaction = db.transaction(['transacoes', 'categorias'], 'readwrite');
+    const transacoesStore = transaction.objectStore('transacoes');
+    const categoriasStore = transaction.objectStore('categorias');
     
-    input.onchange = async (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-        
-        try {
-            const content = await file.text();
-            const dados = JSON.parse(content);
-            
-            if (!dados.transacoes || !dados.categorias) {
-                throw new Error('O arquivo não está no formato correto');
-            }
-            
-            // Confirmar importação
-            if (!confirm('Tem certeza que deseja importar os dados? Isso irá sobrescrever os dados atuais.')) {
-                return;
-            }
-            
-            // Limpar dados atuais
-            const transaction = db.transaction(['transacoes', 'categorias'], 'readwrite');
-            const transacoesStore = transaction.objectStore('transacoes');
-            const categoriasStore = transaction.objectStore('categorias');
-            
-            // Limpar dados atuais
-            await transacoesStore.clear();
-            await categoriasStore.clear();
-            
-            // Adicionar novos dados
-            dados.transacoes.forEach(transacao => {
-                transacoesStore.add(transacao);
-            });
-            
-            dados.categorias.forEach(categoria => {
-                categoriasStore.add(categoria);
-            });
-            
-            // Recarregar dados
-            carregarTransacoes();
-            carregarCategorias();
-            calcularSaldoCumulativoTotal();
-            
-            // Atualizar backup
-            gerenciarBackup();
-            
-            alert('Dados importados com sucesso!');
-        } catch (error) {
-            alert('Erro ao importar dados: ' + error.message);
-        }
-    };
+    transacoesStore.clear();
+    categoriasStore.clear();
     
-    input.click();
+    // Adicionar dados novos
+    dados.transacoes.forEach(transacao => {
+        transacoesStore.add(transacao);
+    });
+    
+    dados.categorias.forEach(categoria => {
+        categoriasStore.add(categoria);
+    });
+    
+    // Recarregar dados
+    carregarTransacoes();
+    carregarCategorias();
+    calcularSaldoCumulativoTotal();
+    
+    alert('Dados importados com sucesso!');
 }
 
 // Função para gerenciar backup automático
@@ -884,9 +980,13 @@ function gerenciarBackup() {
             
             backupStore.add(backup);
             
-            // Se usuário está logado, salvar no GitHub
-            if (usuarioLogado) {
-                salvarNoGitHub(dados);
+            // Tente salvar no GitHub (irá falhar silenciosamente se não houver usuário logado)
+            try {
+                if (window.usuarioLogado) {
+                    salvarNoGitHub(dados);
+                }
+            } catch (error) {
+                console.error('Erro ao tentar salvar no GitHub:', error);
             }
         };
     };

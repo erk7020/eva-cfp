@@ -55,13 +55,17 @@
                 </select>
                 <input type="number" id="valor" placeholder="Valor">
                 <input type="text" id="descricao" placeholder="Descrição">
+                <input type="number" id="dia-transacao" min="1" max="31" placeholder="Dia (1-31)">
                 <select id="categoria">
                     <option value="">Selecione uma categoria</option>
                 </select>
                 <button id="btn-adicionar">Adicionar</button>
+            </div>
+            <div class="form-section">
                 <button id="btn-gerenciar-categorias">Gerenciar Categorias</button>
                 <button id="btn-exportar-dados" class="btn-exportar">Exportar Dados</button>
                 <button id="btn-importar-dados" class="btn-importar">Importar Dados</button>
+                <button id="btn-limpar-dados" class="btn-limpar">Limpar Dados</button>
             </div>
 
             <!-- Tabela de transações -->
